@@ -355,7 +355,6 @@ Le widget inclut un système de logging complet :
 - [ ] Export des configurations
 - [ ] Système de rollback
 - [ ] Support des formats CSV
-- [ ] Validation des données avant import
 
 ## 👥 Contribution
 
