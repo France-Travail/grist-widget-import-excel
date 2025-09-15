@@ -1,0 +1,38 @@
+# Node.js
+node_modules/
+server/node_modules/
+server/package-lock.json
+server/.env
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Mac OS / système
+.DS_Store
+Thumbs.db
+
+# Tests ou fichiers temporaires
+*.xlsx
+tests/sample.xlsx
+tests/output/
+__tests__/
+coverage/
+.vscode/
+.env.local
+
+# Grist local files
+*.grist
+grist-tables/
+
+# IDEs / config persos
+.idea/
+*.swp
+
+# Déploiement (si tu ajoutes un dossier dist plus tard)
+dist/
+build/
+
+/todo

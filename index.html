@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Import Excel → Grist</title>
+
+    <!-- Feuilles de style -->
+    <link rel="stylesheet" href="/styles/style.css" />
+  </head>
+
+  <body>
+    <div class="container">
+      <!-- 🔧 Sélecteur de mode -->
+      <div class="mode-selector" style="text-align: right; margin-bottom: 1rem">
+        <label for="mode-selector">🛠️ Mode :</label>
+        <select id="mode-selector">
+          <option value="public" selected>Public (utilisateur)</option>
+          <option value="admin">Admin (règles Grist)</option>
+          <option value="dev">Développement</option>
+        </select>
+      </div>
+
+      <h1>📥 Import Excel → Grist</h1>
+
+      <!-- 📁 Étape 1 : Chargement du fichier Excel -->
+      <section class="card" data-mode="public dev">
+        <h2>1. Charger un fichier Excel</h2>
+        <input type="file" id="file-input" accept=".xlsx" />
+        <p id="file-name" class="text-gray"></p>
+      </section>
+
+      <!-- 👀 Étape 2 : Prévisualisation des données -->
+      <section class="card" data-mode="dev">
+        <h2>2. Prévisualisation des données Excel</h2>
+        <div id="preview-container">
+          <div class="table-wrapper"></div>
+        </div>
+
+        <!-- 🔽 Liste des colonnes Excel détectées -->
+        <div style="margin-top: 1rem">
+          <label for="column-list">Colonnes Excel détectées :</label><br />
+          <select
+            id="column-list"
+            style="width: 100%; margin-top: 0.5rem"
+          ></select>
+        </div>
+      </section>
+
+      <!-- ⚙️ Étape 3 : Règles de correspondance -->
+      <section class="card" data-mode="admin dev">
+        <h2>3. Configuration des règles d'import</h2>
+        <p>Choisis une règle pour chaque champ importé :</p>
+        <div id="grist-rules-table" class="rules-grid"></div>
+        <button id="save-rules-btn" class="mt-4">
+          💾 Sauvegarder les règles
+        </button>
+      </section>
+
+      <!-- 🔑 Étape 4 : Clé de doublon -->
+      <section class="card" data-mode="admin dev">
+        <h2>4. Clé unique pour les doublons</h2>
+        <p>Sélectionne la colonne servant d'identifiant unique :</p>
+        <select
+          id="unique-key-dropdown"
+          style="width: 100%; margin-top: 0.5rem"
+        ></select>
+      </section>
+
+      <!-- 🚀 Étape 5 : Mapping & import -->
+      <section class="card" data-mode="public dev">
+        <h2>5. Lancement de l'import</h2>
+
+        <button id="match-columns-button" style="margin-top: 1rem">
+          🔁 Faire correspondre les colonnes Excel ↔ Grist
+        </button>
+
+        <div id="mapping-preview" class="mt-2"></div>
+
+        <button id="launch-import-btn" class="mt-4">🚀 Lancer l'import</button>
+
+        <p id="import-status" class="mt-2"></p>
+      </section>
+    </div>
+
+    <!-- 📦 Scripts -->
+    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

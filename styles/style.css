@@ -1,0 +1,230 @@
+/* ==========================
+   🎨 VARIABLES GLOBALES
+   ========================== */
+:root {
+  --blue: #3498db;
+  --blue-dark: #2980b9;
+  --grey-bg: #f4f4f4;
+  --card-bg: #fafafa;
+  --shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+  --radius: 8px;
+}
+
+/* ==========================
+   🔤 TYPOGRAPHIE & BODY
+   ========================== */
+body {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--grey-bg);
+  margin: 0;
+  padding: 2rem;
+  color: #333;
+}
+
+/* ==========================
+   🧱 CONTAINERS PRINCIPAUX
+   ========================== */
+.container {
+  max-width: 920px;
+  margin: auto;
+  background-color: white;
+  padding: 2rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* ==========================
+   🧾 TITRES
+   ========================== */
+h1 {
+  text-align: center;
+  color: #2c3e50;
+  margin-bottom: 2rem;
+  font-size: 2rem;
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+  color: #34495e;
+}
+
+/* ==========================
+   💳 COMPOSANT : CARD
+   ========================== */
+.card {
+  border: 1px solid #e0e0e0;
+  border-left: 5px solid var(--blue);
+  border-radius: var(--radius);
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  background-color: var(--card-bg);
+  transition: background-color 0.2s;
+}
+
+.card:hover {
+  background-color: #fefefe;
+}
+
+/* ==========================
+   📦 FORMULAIRES : INPUTS
+   ========================== */
+input[type="file"] {
+  margin-top: 0.5rem;
+  padding: 0.4rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+select,
+#column-list {
+  padding: 0.4rem;
+  margin-top: 0.5rem;
+  min-width: 250px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* ==========================
+   🧮 TABLEAUX (PREVIEW)
+   ========================== */
+#preview-container table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.95rem;
+}
+
+#preview-container th,
+#preview-container td {
+  border: 1px solid #ddd;
+  padding: 0.6rem;
+  text-align: left;
+}
+
+#preview-container th {
+  background-color: #f0f0f0;
+  font-weight: 600;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.table-wrapper table {
+  min-width: 1000px; /* ajuste selon tes colonnes */
+}
+
+/* ==========================
+   🧷 BOUTONS
+   ========================== */
+button {
+  background-color: var(--blue);
+  border: none;
+  padding: 0.6rem 1.2rem;
+  color: white;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: block;
+  width: fit-content;
+  margin-top: 0.5rem;
+}
+
+button:hover:not(:disabled) {
+  background-color: var(--blue-dark);
+}
+
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* ==========================
+   📋 FICHIERS / INFOS IMPORT
+   ========================== */
+#file-name,
+#import-status {
+  font-size: 0.9rem;
+  color: #555;
+  margin-top: 0.5rem;
+}
+
+/* ==========================
+   🧩 RÈGLES D'IMPORT
+   ========================== */
+#rules-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #f7f9fc;
+  border-radius: 0.5rem;
+}
+
+#rules-container div {
+  display: flex;
+  flex-direction: column;
+  background-color: white;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
+}
+
+#rules-container label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #2d3748;
+  font-size: 0.9rem;
+}
+
+#rules-container select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 0.375rem;
+  background-color: #f9fafb;
+  font-size: 0.9rem;
+  color: #2d3748;
+  transition: all 0.2s;
+}
+
+#rules-container select:focus {
+  outline: none;
+  border-color: #3182ce;
+  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.4);
+}
+
+/* ==========================
+   🧠 RÉSUMÉ D’IMPORT
+   ========================== */
+#rules-summary {
+  background-color: #ecf0f1;
+  padding: 1rem;
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+/* ==========================
+   🧾 MAPPINGS (RÈGLES MANUELLES)
+   ========================== */
+.rule-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.rule-row label {
+  flex: 1;
+  font-weight: bold;
+}
+
+.rule-row select {
+  flex: 1;
+}
