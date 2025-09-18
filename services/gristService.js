@@ -1,5 +1,5 @@
 // gristService.js
-import { fetchImportRules } from "./gristRules.js";
+import { fetchImportRules } from "../gristRules.js";
 
 // =========================
 // 🧠 Variables internes

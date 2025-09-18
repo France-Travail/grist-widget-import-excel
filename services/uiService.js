@@ -3,9 +3,9 @@
 // Gère l'affichage, la prévisualisation et les interactions utilisateur
 // avec les règles d'import entre Excel et Grist
 
-import { fetchImportRules } from "./gristRules.js";
-import { ensureRulesConfigTableExists } from "./adminTools.js";
-import { DUPLICATION_RULES } from "./config.js";
+import { fetchImportRules } from "../gristRules.js";
+import { ensureRulesConfigTableExists } from "../adminTools.js";
+import { DUPLICATION_RULES } from "../config.js";
 
 // === Stockage local des données Excel ===
 let currentExcelData = [];

@@ -10,21 +10,24 @@ const path = require("path");
 const app = express();
 const PORT = 8000;
 
-// 📁 Définition du dossier racine à servir (parent du fichier courant)
-const basePath = path.join(__dirname, "..");
+// 📁 Définition du dossier public à servir
+const publicPath = path.join(__dirname, "..", "public");
+const srcPath = path.join(__dirname, "..", "src");
 
 // ==============================
 // 🧱 MIDDLEWARES
 // ==============================
-// Sert tous les fichiers statiques depuis la racine du projet
-app.use(express.static(basePath));
+// Sert les fichiers statiques depuis public/
+app.use(express.static(publicPath));
+// Sert aussi les sources depuis src/ pour les imports ES6
+app.use("/src", express.static(srcPath));
 
 // ==============================
 // 🌍 ROUTES
 // ==============================
-// Route principale : renvoie index.html
+// Route principale : renvoie index.html depuis public/
 app.get("/", (req, res) => {
-  res.sendFile(path.join(basePath, "index.html"));
+  res.sendFile(path.join(publicPath, "index.html"));
 });
 
 // ==============================
