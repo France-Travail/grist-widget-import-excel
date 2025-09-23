@@ -6,6 +6,7 @@
 import { fetchImportRules } from "./rulesService.js";
 import { ensureRulesConfigTableExists } from "./adminService.js";
 import { DUPLICATION_RULES } from "../config.js";
+import { normalizeName } from "./utils.js";
 
 // === Stockage local des données Excel ===
 let currentExcelData = [];
@@ -68,8 +69,8 @@ export function populateColumnList(headers) {
 
   headers.forEach((colName) => {
     const option = document.createElement("option");
-    option.value = colName;
-    option.textContent = colName;
+    option.value = normalizeName(colName); // 🔧 normalisation
+    option.textContent = colName; // affichage original
     select.appendChild(option);
   });
 }
@@ -80,10 +81,11 @@ export async function populateUniqueKeySelector(columnNames) {
   select.innerHTML = "";
 
   columnNames.forEach((col) => {
+    const normCol = normalizeName(col);
     const option = document.createElement("option");
-    option.value = col;
+    option.value = normCol;
     option.textContent = col;
-    if (col === uniqueKey) {
+    if (normCol === normalizeName(uniqueKey)) {
       option.selected = true;
     }
     select.appendChild(option);
@@ -109,19 +111,22 @@ export async function populateRulesConfig(columns) {
   container.innerHTML = "";
 
   columns.forEach((col) => {
+    const normCol = normalizeName(col);
+    const currentRule = rules[normCol]?.rule || "ignore";
+
     const div = document.createElement("div");
     div.style.marginBottom = "1em";
 
     const label = document.createElement("label");
     label.textContent = col;
-    label.setAttribute("for", `rule-${col}`);
+    label.setAttribute("for", `rule-${normCol}`);
     label.style.marginRight = "1em";
     label.style.fontWeight = "bold";
 
     const select = document.createElement("select");
-    select.id = `rule-${col}`;
-    select.name = `rule-${col}`;
-    select.dataset.col = col;
+    select.id = `rule-${normCol}`;
+    select.name = `rule-${normCol}`;
+    select.dataset.col = normCol;
     select.style.marginRight = "0.5em";
 
     DUPLICATION_RULES.forEach((rule) => {
@@ -129,13 +134,13 @@ export async function populateRulesConfig(columns) {
       option.value = rule.value;
       option.textContent = rule.label;
       option.title = rule.description;
-      if (rules[col] === rule.value) option.selected = true;
+      if (currentRule === rule.value) option.selected = true;
       select.appendChild(option);
     });
 
     const description = document.createElement("small");
     description.className = "rule-description";
-    const selected = DUPLICATION_RULES.find((r) => r.value === rules[col]);
+    const selected = DUPLICATION_RULES.find((r) => r.value === currentRule);
     description.textContent =
       selected?.description || DUPLICATION_RULES[0].description;
 
@@ -156,7 +161,7 @@ export async function populateRulesConfig(columns) {
 // === Retourne la colonne sélectionnée comme clé unique ===
 export function getSelectedUniqueColumn() {
   const select = document.getElementById("unique-key-selector");
-  return select?.value || null;
+  return normalizeName(select?.value || null);
 }
 
 // === Résumé des règles sélectionnées (affichage UI) ===
@@ -166,7 +171,7 @@ export function generateRulesSummary() {
 
   const rules = [...document.querySelectorAll("#rules-container select")].map(
     (select) => {
-      const field = select.name.replace("rule-", "");
+      const field = select.dataset.col; // déjà normalisé
       const rule = select.options[select.selectedIndex].textContent;
       return `Champ ${field} : ${rule}`;
     }
@@ -193,7 +198,9 @@ export function updateMappingUI(mapping) {
       ${Object.entries(mapping)
         .map(
           ([excelCol, gristCol]) =>
-            `<li><strong>${excelCol}</strong> ➝ ${gristCol}</li>`
+            `<li><strong>${excelCol}</strong> ➝ ${
+              gristCol || "❌ Aucun match"
+            }</li>`
         )
         .join("")}
     </ul>
@@ -202,13 +209,11 @@ export function updateMappingUI(mapping) {
 
 // === Récupère les règles d'import actuelles depuis Grist ===
 export async function getCurrentRules() {
-  const rules = await fetchImportRules();
-  return rules;
+  return await fetchImportRules(); // déjà normalisé côté rulesService
 }
 
 // === Initialisation de l'interface Admin (mode Admin) ===
 export async function initAdminRulesUI() {
-  // await ensureRulesConfigTableExists(); // Si besoin de créer la table
   const { rules, uniqueKey } = await fetchImportRules();
 
   const rulesContainer = document.getElementById("grist-rules-table");
@@ -217,7 +222,7 @@ export async function initAdminRulesUI() {
   rulesContainer.innerHTML = "";
   uniqueKeyDropdown.innerHTML = "";
 
-  for (const [colName, selectedRule] of Object.entries(rules)) {
+  for (const [normCol, ruleObj] of Object.entries(rules)) {
     const row = document.createElement("div");
     row.className = "rule-row";
     row.style.display = "flex";
@@ -226,18 +231,18 @@ export async function initAdminRulesUI() {
     row.style.marginBottom = "0.5rem";
 
     const label = document.createElement("label");
-    label.textContent = colName;
+    label.textContent = ruleObj.original; // affichage lisible
     label.style.flex = "1";
 
     const select = document.createElement("select");
-    select.name = colName;
+    select.name = normCol;
     select.style.flex = "2";
 
     for (const rule of DUPLICATION_RULES) {
       const option = document.createElement("option");
       option.value = rule.value;
       option.textContent = rule.label;
-      if (rule.value === selectedRule) option.selected = true;
+      if (rule.value === ruleObj.rule) option.selected = true;
       select.appendChild(option);
     }
 
@@ -245,13 +250,15 @@ export async function initAdminRulesUI() {
       const newRule = event.target.value;
       try {
         const tableData = await grist.docApi.fetchTable("RULES_CONFIG");
-        const idx = tableData.col_name.findIndex((name) => name === colName);
+        const idx = tableData.col_name.findIndex(
+          (name) => normalizeName(name) === normCol
+        );
         if (idx === -1) return;
         const rowId = tableData.id[idx];
         await grist.docApi.applyUserActions([
           ["UpdateRecord", "RULES_CONFIG", rowId, { rule: newRule }],
         ]);
-        console.log(`✅ Règle "${colName}" mise à jour → ${newRule}`);
+        console.log(`✅ Règle "${ruleObj.original}" mise à jour → ${newRule}`);
       } catch (err) {
         console.error("❌ Erreur lors de la mise à jour de la règle :", err);
       }
@@ -262,9 +269,9 @@ export async function initAdminRulesUI() {
     rulesContainer.appendChild(row);
 
     const optionKey = document.createElement("option");
-    optionKey.value = colName;
-    optionKey.textContent = colName;
-    if (colName === uniqueKey) optionKey.selected = true;
+    optionKey.value = normCol;
+    optionKey.textContent = ruleObj.original;
+    if (normCol === normalizeName(uniqueKey)) optionKey.selected = true;
     uniqueKeyDropdown.appendChild(optionKey);
   }
 
@@ -276,7 +283,7 @@ export async function initAdminRulesUI() {
         "UpdateRecord",
         "RULES_CONFIG",
         tableData.id[i],
-        { is_key: col === selectedKey },
+        { is_key: normalizeName(col) === selectedKey },
       ]);
       await grist.docApi.applyUserActions(actions);
       console.log(`🗝️ Clé unique mise à jour → ${selectedKey}`);

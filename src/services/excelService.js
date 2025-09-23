@@ -3,6 +3,7 @@
 // =========================
 
 import { setExcelData } from "./uiService.js"; // 🧠 stockage global des données
+import { normalizeName } from "./utils.js"; // 🔧 normalisation unique
 
 // =========================
 // 📄 PARSE DU FICHIER EXCEL
@@ -10,7 +11,7 @@ import { setExcelData } from "./uiService.js"; // 🧠 stockage global des donn�
 
 /**
  * Parse un fichier Excel (première feuille uniquement)
- * et normalise les lignes pour avoir la même longueur.
+ * Nettoie les colonnes vides et normalise les lignes.
  *
  * @param {File} file - Fichier Excel sélectionné
  * @param {Function} callback - Fonction appelée avec les données corrigées
@@ -27,13 +28,24 @@ export function parseExcelFile(file, callback) {
 
     const raw = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-    // ✅ Corriger les lignes incomplètes pour avoir le même nombre de colonnes
-    const maxLength = raw[0]?.length || 0;
-    const fixed = raw.map((row) => {
+    if (!raw.length) {
+      console.warn("⚠️ Fichier Excel vide ou illisible");
+      return callback([]);
+    }
+
+    // === Étape 1 : Nettoyer les headers ===
+    const header = raw[0].map((h) => (h ? String(h).trim() : ""));
+    const validIndexes = header
+      .map((h, i) => (h !== "" ? i : null))
+      .filter((i) => i !== null);
+
+    const cleaned = raw.map((row) => validIndexes.map((i) => row[i] ?? ""));
+
+    // === Étape 2 : Normaliser la longueur des lignes ===
+    const maxLength = cleaned[0]?.length || 0;
+    const fixed = cleaned.map((row) => {
       const newRow = Array.from(row);
-      while (newRow.length < maxLength) {
-        newRow.push("");
-      }
+      while (newRow.length < maxLength) newRow.push("");
       return newRow;
     });
 
@@ -42,26 +54,6 @@ export function parseExcelFile(file, callback) {
   };
 
   reader.readAsArrayBuffer(file);
-}
-
-// =========================
-// 🧽 NORMALISATION DE CHAÎNE
-// =========================
-
-/**
- * Nettoie une chaîne pour matcher des noms de colonnes.
- * Supprime accents, espaces, caractères spéciaux, majuscules, etc.
- *
- * @param {string} str
- * @returns {string} chaîne normalisée
- */
-function normalize(str) {
-  return str
-    .toLowerCase()
-    .normalize("NFD") // enlève les accents
-    .replace(/[\u0300-\u036f]/g, "") // caractères spéciaux Unicode
-    .replace(/[^a-z0-9]/g, "") // tout sauf lettres/chiffres
-    .replace(/_/g, ""); // optionnel : supprime les underscores
 }
 
 // =========================
@@ -81,14 +73,26 @@ export function matchExcelToGrist(excelCols, gristCols) {
 
   const normalizedGristCols = gristCols.map((col) => ({
     original: col,
-    norm: normalize(col),
+    norm: normalizeName(col),
   }));
 
   excelCols.forEach((col) => {
-    const normCol = normalize(col);
+    if (!col || col.trim() === "") return; // ⚠️ skip colonnes vides
+    const normCol = normalizeName(col);
     const match = normalizedGristCols.find((g) => g.norm === normCol);
     mapping[col] = match?.original || ""; // vide si aucun match
   });
+
+  // Debug clair 🔎
+  console.group("📊 DEBUG MATCHING Excel ↔ Grist");
+  console.table(
+    excelCols.map((excelCol) => ({
+      "Excel column": excelCol || "(colonne vide)",
+      Normalized: normalizeName(excelCol || ""),
+      "Matched Grist column": mapping[excelCol] || "❌ Aucun match",
+    }))
+  );
+  console.groupEnd();
 
   return mapping;
 }

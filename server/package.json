@@ -76,7 +76,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "author": "Yannis Mesbah",
+  "author": "yannis.mesbah@francetravail.fr",
   "license": "MIT",
   "description": "Widget d’importation Excel → Grist avec règles configurables et interface utilisateur"
 }

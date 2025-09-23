@@ -1,27 +1,14 @@
 // =========================
-// 🔧 UTILITAIRE : Nettoyage d’un nom de colonne
-// =========================
-
-/**
- * Normalise un nom de colonne Grist :
- * supprime les retours à la ligne, tabulations, espaces en double…
- *
- * @param {string} str
- * @returns {string} Chaîne nettoyée
- */
-function normalizeColName(str) {
-  return str?.trim().replace(/\s+/g, " ");
-}
-
-// =========================
 // 📥 FETCH DES RÈGLES D’IMPORT DEPUIS LA TABLE "RULES_CONFIG"
 // =========================
 
+import { normalizeName, cleanLabel } from "./utils.js";
+
 /**
- * Récupère les règles de traitement pour chaque colonne depuis la table RULES_CONFIG
- * ainsi que la clé unique choisie par l'utilisateur (colonne `is_key`)
+ * Récupère les règles de traitement pour chaque colonne depuis RULES_CONFIG.
+ * Les noms de colonnes sont normalisés pour être cohérents avec Excel et Grist.
  *
- * @param {string} tableName - Nom de la table Grist contenant les règles (défaut : RULES_CONFIG)
+ * @param {string} tableName - Nom de la table (défaut : RULES_CONFIG)
  * @returns {Promise<{rules: Object, uniqueKey: string|null}>}
  */
 export async function fetchImportRules(tableName = "RULES_CONFIG") {
@@ -37,30 +24,29 @@ export async function fetchImportRules(tableName = "RULES_CONFIG") {
       const rule = result.rule[i];
       const isKey = result.is_key?.[i];
 
-      const colName = normalizeColName(rawColName);
+      if (!rawColName || !rule) continue;
 
-      if (!colName || !rule) continue;
+      const normalized = normalizeName(rawColName);
+      const clean = cleanLabel(rawColName);
 
       if (isKey) {
-        uniqueKey = colName;
+        uniqueKey = normalized; // ⚠️ clé unique aussi en version normalisée
       }
 
-      rules[colName] = rule;
+      rules[normalized] = {
+        rule,
+        original: rawColName,
+        label: clean,
+      };
     }
 
-    console.log("📄 Règles d’import récupérées depuis Grist :", rules);
-
     if (!uniqueKey) {
-      console.warn(
-        "⚠️ Aucune clé unique définie dans rules_config (colonne is_key)"
-      );
-    } else {
-      console.log("🗝️ Clé unique :", uniqueKey);
+      console.warn("⚠️ Aucune clé unique définie dans rules_config !");
     }
 
     return { rules, uniqueKey };
   } catch (e) {
-    console.error("❌ Erreur lors du chargement des règles depuis Grist :", e);
+    console.error("❌ Erreur lors du chargement des règles :", e);
     return { rules: {}, uniqueKey: null };
   }
 }

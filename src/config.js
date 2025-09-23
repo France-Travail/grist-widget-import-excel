@@ -23,12 +23,6 @@ export const DUPLICATION_RULES = [
       "La valeur Excel est utilisée uniquement si la cellule Grist est vide.",
   },
   {
-    value: "preserve_if_not_empty",
-    label: "🔒 Ne modifier que si vide",
-    description:
-      "La valeur Excel est utilisée seulement si la cellule Grist est vide.",
-  },
-  {
     value: "append_if_different",
     label: "➕ Ajouter si différent",
     description:
