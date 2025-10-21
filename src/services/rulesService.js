@@ -41,12 +41,12 @@ export async function fetchImportRules(tableName = "RULES_CONFIG") {
     }
 
     if (!uniqueKey) {
-      console.warn("⚠️ Aucune clé unique définie dans rules_config !");
+      console.warn("Aucune clé unique définie dans rules_config !");
     }
 
     return { rules, uniqueKey };
   } catch (e) {
-    console.error("❌ Erreur lors du chargement des règles :", e);
+    console.error("Erreur lors du chargement des règles :", e);
     return { rules: {}, uniqueKey: null };
   }
 }

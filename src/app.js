@@ -21,6 +21,7 @@ import {
 // Règles d'import
 import { fetchImportRules } from "./services/rulesService.js";
 
+
 // =========================
 // 🧠 VARIABLES GLOBALES
 // =========================
@@ -105,13 +106,13 @@ document
 document
   .getElementById("launch-import-btn")
   .addEventListener("click", async () => {
-    console.log("🚀 Début de l'import...");
+    console.log("Début de l'import...");
 
     const status = document.getElementById("import-status");
     const { uniqueKey } = await fetchImportRules();
     const excelData = getExcelData();
 
-    // ✅ Vérifications préalables
+    // Vérifications préalables
     if (!uniqueKey) {
       alert(
         "Merci de sélectionner une colonne unique pour détecter les doublons."
@@ -124,26 +125,26 @@ document
       return;
     }
 
-    // 🟠 Indication de progression
-    status.textContent = "⏳ Import en cours...";
-    status.style.color = "#f0ad4e";
+    // Indication de progression
+    status.textContent = "Import en cours...";
+    status.style.color = "#f59e0b";
 
     try {
       const mapping = matchExcelToGrist(excelData[0], gristCols);
       const resume = await importToGrist({ excelData, mapping });
 
-      // ✅ Résumé visuel
+      // Résumé visuel
       const htmlSummary = resume.map((line) => `<li>${line}</li>`).join("");
 
       status.innerHTML = `
-        <p style="color:#5cb85c"><strong>✅ Import terminé avec succès.</strong></p>
+        <p style="color:#10b981"><strong>Import terminé avec succès.</strong></p>
         <ul style="margin-top: 0.5em; font-size: 0.9em; padding-left: 1em;">
           ${htmlSummary}
         </ul>`;
     } catch (err) {
-      console.error("❌ Échec de l'import :", err);
+      console.error("Échec de l'import :", err);
       status.textContent =
-        "❌ Échec de l'import. Voir la console pour plus d'informations.";
-      status.style.color = "#d9534f";
+        "Échec de l'import. Voir la console pour plus d'informations.";
+      status.style.color = "#ef4444";
     }
   });

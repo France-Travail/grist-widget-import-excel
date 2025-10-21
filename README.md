@@ -1,8 +1,8 @@
-# 📥 Grist Import Widget
+# Grist Import Widget
 
-Un widget d'importation Excel → Grist intelligent avec gestion des règles de duplication et mapping automatique des colonnes.
+Un widget d'importation Excel vers Grist intelligent avec gestion des règles de duplication et mapping automatique des colonnes.
 
-## 🚀 Démarrage rapide
+## Démarrage rapide
 
 ### 1. Lancer le serveur de développement
 ```bash
@@ -15,7 +15,7 @@ npm start
 - URL : `http://localhost:8000`
 - Accès requis : "full"
 
-## 📁 Structure du projet
+## Structure du projet
 
 ```
 grist-import-widget/
@@ -37,19 +37,19 @@ grist-import-widget/
 └── tests/                 # Tests (futur)
 ```
 
-## ✨ Fonctionnalités
+## Fonctionnalités
 
-- **📊 Import Excel** : Support des fichiers .xlsx
-- **🔄 Mapping automatique** : Correspondance intelligente des colonnes
-- **⚙️ Règles configurables** : 6 types de règles d'import par colonne
-- **🔑 Gestion des doublons** : Détection via clé unique
-- **🎮 Interface multi-mode** : Public, admin et développement
+- **Import Excel** : Support des fichiers .xlsx
+- **Mapping automatique** : Correspondance intelligente des colonnes
+- **Règles configurables** : 6 types de règles d'import par colonne
+- **Gestion des doublons** : Détection via clé unique
+- **Interface multi-mode** : Public, admin et développement
 
-## 📖 Documentation complète
+## Documentation complète
 
 Pour la documentation détaillée, voir [`docs/README.md`](docs/README.md).
 
-## 🔧 Développement
+## Développement
 
 ### Scripts disponibles
 - `cd server && npm start` : Lance le serveur de développement
@@ -60,4 +60,4 @@ Pour la documentation détaillée, voir [`docs/README.md`](docs/README.md).
 
 ---
 
-**Widget open source pour la communauté Grist** 💪
+**Widget open source pour la communauté Grist**

@@ -24,59 +24,59 @@ grist.docApi.applyUserActions = async function (actions, options = {}) {
 // - Crée la table RULES_CONFIG si absente
 // - Initialise avec une ligne par colonne du formulaire
 // ===============================================
-export async function ensureRulesConfigTableExists(
-  formTableName = "Nom_Table",
-  configTableName = "RULES_CONFIG"
-) {
-  // 1. Vérifie les tables existantes
-  const allTables = await grist.docApi.listTables();
-  console.log("📋 Tables existantes : ", allTables);
+// export async function ensureRulesConfigTableExists(
+//   formTableName = "Nom_Table",
+//   configTableName = "RULES_CONFIG"
+// ) {
+//   // 1. Vérifie les tables existantes
+//   const allTables = await grist.docApi.listTables();
+//   console.log("📋 Tables existantes : ", allTables);
 
-  const tableExists = allTables.includes(configTableName);
-  if (tableExists) {
-    console.log("✅ RULES_CONFIG existe déjà.");
-    return;
-  }
+//   const tableExists = allTables.includes(configTableName);
+//   if (tableExists) {
+//     console.log("✅ RULES_CONFIG existe déjà.");
+//     return;
+//   }
 
-  // 2. Crée la table RULES_CONFIG
-  console.log("⚙ Création de la table RULES_CONFIG…");
-  await grist.docApi.applyUserActions([
-    ["AddTable", configTableName, null],
-    ["AddColumn", configTableName, "col_name", { type: "Text" }],
-    ["AddColumn", configTableName, "rule", { type: "Text" }],
-    ["AddColumn", configTableName, "is_key", { type: "Bool" }],
-  ]);
-  console.log("✅ Table RULES_CONFIG créée.");
+//   // 2. Crée la table RULES_CONFIG
+//   console.log("⚙ Création de la table RULES_CONFIG…");
+//   await grist.docApi.applyUserActions([
+//     ["AddTable", configTableName, null],
+//     ["AddColumn", configTableName, "col_name", { type: "Text" }],
+//     ["AddColumn", configTableName, "rule", { type: "Text" }],
+//     ["AddColumn", configTableName, "is_key", { type: "Bool" }],
+//   ]);
+//   console.log("✅ Table RULES_CONFIG créée.");
 
-  // 3. Récupère les colonnes de la table du formulaire
-  const tableData = await grist.docApi.fetchTable(formTableName);
-  if (!tableData || tableData.length === 0) {
-    console.warn("❌ Table source vide ou introuvable :", formTableName);
-    return;
-  }
+//   // 3. Récupère les colonnes de la table du formulaire
+//   const tableData = await grist.docApi.fetchTable(formTableName);
+//   if (!tableData || tableData.length === 0) {
+//     console.warn("❌ Table source vide ou introuvable :", formTableName);
+//     return;
+//   }
 
-  const firstRow = tableData[0];
-  const fieldNames = Object.keys(firstRow).filter(
-    (name) => name !== "id" && name !== "manualSort"
-  );
-  console.log("🧱 Colonnes détectées :", fieldNames);
+//   const firstRow = tableData[0];
+//   const fieldNames = Object.keys(firstRow).filter(
+//     (name) => name !== "id" && name !== "manualSort"
+//   );
+//   console.log("🧱 Colonnes détectées :", fieldNames);
 
-  // 4. Initialise les règles par défaut pour chaque colonne
-  const actions = fieldNames.map((colName) => [
-    "AddRecord",
-    configTableName,
-    null,
-    {
-      col_name: colName,
-      rule: "ignore",
-      is_key: false,
-    },
-  ]);
+//   // 4. Initialise les règles par défaut pour chaque colonne
+//   const actions = fieldNames.map((colName) => [
+//     "AddRecord",
+//     configTableName,
+//     null,
+//     {
+//       col_name: colName,
+//       rule: "ignore",
+//       is_key: false,
+//     },
+//   ]);
 
-  if (actions.length > 0) {
-    await grist.docApi.applyUserActions(actions);
-    console.log(`✅ ${actions.length} règles insérées.`);
-  } else {
-    console.log("ℹ Aucune colonne détectée.");
-  }
-}
+//   if (actions.length > 0) {
+//     await grist.docApi.applyUserActions(actions);
+//     console.log(`✅ ${actions.length} règles insérées.`);
+//   } else {
+//     console.log("ℹ Aucune colonne détectée.");
+//   }
+// }

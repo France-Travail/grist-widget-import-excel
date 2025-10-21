@@ -5,6 +5,7 @@
 
 import { fetchImportRules } from "./rulesService.js";
 import { normalizeName } from "./utils.js";
+import { ensureRulesTableExists } from "./rulesSetupService.js";
 
 // =========================
 // 🧠 État interne
@@ -32,16 +33,36 @@ export function getCurrentGristData() {
 export function initGristListener(onRecordsReceived) {
   grist.ready({ requiredAccess: "full" });
 
-  grist.onRecords((records) => {
-    tableData = records || [];
-    gristSchema = detectColumnTypesFromRecords(records || []);
-    onRecordsReceived?.(records || []);
-  });
-
-  // Récupère l'ID de la table “active”
   grist.on("message", (e) => {
     if (e.tableId) currentTableId = e.tableId;
   });
+
+
+// Événement principal : réception des données du tableau sélectionné
+  grist.onRecords(async (records) => {
+    tableData = records || [];
+    gristSchema = detectColumnTypesFromRecords(records || []);
+
+    // 🧩 Vérifie la présence de RULES_CONFIG avant de continuer
+    const rulesOk = await ensureRulesTableExists();
+    if (!rulesOk) {
+      console.warn("⛔ Table RULES_CONFIG manquante — arrêt du chargement widget.");
+      return; // ⛔ stoppe le flux, l’UI du setup prend le relais
+    }
+
+
+    // ✅ Si la table est présente, on continue normalement
+    onRecordsReceived?.(records || []);
+  });
+
+
+  // grist.onRecords((records) => {
+  //   tableData = records || [];
+  //   gristSchema = detectColumnTypesFromRecords(records || []);
+  //   onRecordsReceived?.(records || []);
+  // });
+
+  // Récupère l'ID de la table “active”
 }
 
 function detectColumnTypesFromRecords(records) {
@@ -63,14 +84,14 @@ function detectColumnTypesFromRecords(records) {
 // 🚀 Import principal
 // =========================
 export async function importToGrist({ excelData, mapping }) {
-  console.log("🚀 Import vers Grist lancé");
+  console.log("Import vers Grist lancé");
 
   if (!currentTableId) {
     console.error(
-      "❌ currentTableId introuvable (grist.on('message') non déclenché)."
+      "currentTableId introuvable (grist.on('message') non déclenché)."
     );
     alert(
-      "Impossible d’identifier la table cible (currentTableId). Ouvre le widget dans une vue liée à une table."
+      "Impossible d'identifier la table cible (currentTableId). Ouvre le widget dans une vue liée à une table."
     );
     return;
   }
@@ -78,7 +99,7 @@ export async function importToGrist({ excelData, mapping }) {
   // 1) Récupération des règles (tolère ancien format & nouveau format)
   const { rules: rawRules, uniqueKey: rawUniqueKey } = await fetchImportRules();
   if (!rawUniqueKey) {
-    alert("❌ Aucune clé unique définie dans RULES_CONFIG !");
+    alert("Aucune clé unique définie dans RULES_CONFIG !");
     return;
   }
 
@@ -104,7 +125,7 @@ export async function importToGrist({ excelData, mapping }) {
         (data.original && normToGristCol[normalizeName(data.original)]);
       if (!gristCol) {
         console.warn(
-          `⚠️ Règle ignorée: colonne introuvable dans Grist pour "${
+          `Règle ignorée: colonne introuvable dans Grist pour "${
             data.original || norm
           }"`
         );
@@ -119,7 +140,7 @@ export async function importToGrist({ excelData, mapping }) {
       const gristCol = normToGristCol[norm];
       if (!gristCol) {
         console.warn(
-          `⚠️ Règle ignorée: colonne introuvable dans Grist pour "${maybeGristOrLabel}"`
+          `Règle ignorée: colonne introuvable dans Grist pour "${maybeGristOrLabel}"`
         );
         continue;
       }
@@ -131,7 +152,7 @@ export async function importToGrist({ excelData, mapping }) {
   const uniqueKeyGristCol = normToGristCol[uniqueKeyNorm];
   if (!uniqueKeyGristCol) {
     console.error(
-      `❌ La clé unique "${rawUniqueKey}" ne correspond à aucune colonne Grist.`
+      `La clé unique "${rawUniqueKey}" ne correspond à aucune colonne Grist.`
     );
     alert(
       `Clé unique "${rawUniqueKey}" invalide (colonne inconnue dans Grist).`
@@ -144,13 +165,13 @@ export async function importToGrist({ excelData, mapping }) {
   const rows = (excelData || []).slice(1);
 
   // DEBUG — Excel brut
-  console.group("📊 DEBUG EXCEL BRUT");
-  console.log("🔹 Colonnes Excel :", header);
+  console.group("DEBUG EXCEL BRUT");
+  console.log("Colonnes Excel :", header);
   console.table(rows.slice(0, 10));
   console.groupEnd();
 
   // DEBUG — Normalisation Excel / Grist / Rules / Dictionnaire
-  console.group("📊 DEBUG NORMALISATION");
+  console.group("DEBUG NORMALISATION");
   console.table(
     header.map((h) => ({ excelHeader: h, norm: normalizeName(h) }))
   );
@@ -226,7 +247,7 @@ export async function importToGrist({ excelData, mapping }) {
         : String(keyValRaw).trim();
     if (!key) {
       resume.push(
-        `Ligne ${i + 1} : 🚫 IGNORÉE (clé "${uniqueKeyGristCol}" vide)`
+        `Ligne ${i + 1} : IGNORÉE (clé "${uniqueKeyGristCol}" vide)`
       );
       continue;
     }
@@ -246,7 +267,7 @@ export async function importToGrist({ excelData, mapping }) {
         const excelVal = lineByNorm[norm];
         const gristVal = existing[gristCol];
 
-        console.log("🔎 DEBUG champ:", {
+        console.log("DEBUG champ:", {
           norm,
           gristCol,
           excelVal,
@@ -298,9 +319,9 @@ export async function importToGrist({ excelData, mapping }) {
       }
       if (hasUpdate) {
         actions.push(["UpdateRecord", currentTableId, existing.id, updates]);
-        resume.push(`Ligne ${i + 1} : ✏️ UPDATE → ${JSON.stringify(updates)}`);
+        resume.push(`Ligne ${i + 1} : UPDATE → ${JSON.stringify(updates)}`);
       } else {
-        resume.push(`Ligne ${i + 1} : 🟢 IGNORÉ (aucun changement)`);
+        resume.push(`Ligne ${i + 1} : IGNORÉ (aucun changement)`);
       }
     } else {
       // ADD
@@ -310,20 +331,20 @@ export async function importToGrist({ excelData, mapping }) {
         if (norm in lineByNorm) newRecord[gristCol] = lineByNorm[norm];
       }
       actions.push(["AddRecord", currentTableId, null, newRecord]);
-      resume.push(`Ligne ${i + 1} : 🆕 ADD → ${JSON.stringify(newRecord)}`);
+      resume.push(`Ligne ${i + 1} : ADD → ${JSON.stringify(newRecord)}`);
     }
   }
 
   // 7) Debug actions & simulation
-  console.group("📊 DEBUG TABLE AVANT IMPORT");
+  console.group("DEBUG TABLE AVANT IMPORT");
   console.table(
     actions.map(([type, , id, payload]) => ({ action: type, id, ...payload }))
   );
   console.groupEnd();
 
   if (actions.length === 0) {
-    console.log("📭 Aucun changement à appliquer.");
-    console.log("📋 Résumé final :", resume);
+    console.log("Aucun changement à appliquer.");
+    console.log("Résumé final :", resume);
     return resume;
   }
 
@@ -339,14 +360,14 @@ export async function importToGrist({ excelData, mapping }) {
       });
     }
   }
-  console.group("📊 DEBUG TABLE APRES IMPORT (simulation)");
+  console.group("DEBUG TABLE APRES IMPORT (simulation)");
   console.table(simulatedTable);
   console.groupEnd();
 
   // 8) Apply
   await grist.docApi.applyUserActions(actions);
-  console.log(`✅ ${actions.length} action(s) envoyée(s) à Grist`);
-  console.log("📋 Résumé final :", resume);
+  console.log(`${actions.length} action(s) envoyée(s) à Grist`);
+  console.log("Résumé final :", resume);
   return resume;
 }
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Import Excel → Grist</title>
+    <title>Import Excel vers Grist</title>
 
     <!-- Feuilles de style -->
     <link rel="stylesheet" href="styles/style.css" />
@@ -11,79 +11,122 @@
 
   <body>
     <div class="container">
-      <!-- 🔧 Sélecteur de mode -->
-      <div class="mode-selector" style="text-align: right; margin-bottom: 1rem">
-        <label for="mode-selector">🛠️ Mode :</label>
+      <!-- Sélecteur de mode -->
+      <div class="mode-selector">
+        <label for="mode-selector">Mode :</label>
         <select id="mode-selector">
-          <option value="public" selected>Public (utilisateur)</option>
-          <option value="admin">Admin (règles Grist)</option>
+          <option value="public" selected>Utilisateur</option>
+          <option value="admin">Administration</option>
           <option value="dev">Développement</option>
         </select>
       </div>
 
-      <h1>📥 Import Excel → Grist</h1>
+      <header class="main-header">
+        <div class="header-content">
+          <div class="header-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.89 22 5.99 22H18C19.1 22 20 21.1 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M14 2V8H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M16 13H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M16 17H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M10 9H9H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <h1>Import Excel vers Grist</h1>
+          <p class="subtitle">Importez vos données Excel avec des règles de gestion des doublons configurables</p>
+        </div>
+      </header>
 
-      <!-- 📁 Étape 1 : Chargement du fichier Excel -->
+      <!-- Étape 1 : Chargement du fichier Excel -->
       <section class="card" data-mode="public dev">
-        <h2>1. Charger un fichier Excel</h2>
-        <input type="file" id="file-input" accept=".xlsx" />
-        <p id="file-name" class="text-gray"></p>
+        <div class="card-header">
+          <h2>1. Sélection du fichier</h2>
+        </div>
+        <div class="file-upload-area">
+          <div class="file-input-wrapper">
+            <input type="file" id="file-input" accept=".xlsx" />
+            <label for="file-input" class="file-input-label">
+              <div class="upload-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.89 22 5.99 22H18C19.1 22 20 21.1 20 20V8L14 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M14 2V8H20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M16 13H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M16 17H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M10 9H9H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <span class="upload-text">Choisir un fichier Excel</span>
+              <span class="upload-hint">Format .xlsx uniquement</span>
+            </label>
+          </div>
+          <div id="file-name" class="file-selected"></div>
+        </div>
       </section>
 
-      <!-- 👀 Étape 2 : Prévisualisation des données -->
+      <!-- Étape 2 : Prévisualisation des données -->
       <section class="card" data-mode="dev">
-        <h2>2. Prévisualisation des données Excel</h2>
+        <div class="card-header">
+          <h2>2. Prévisualisation des données</h2>
+        </div>
         <div id="preview-container">
           <div class="table-wrapper"></div>
         </div>
 
-        <!-- 🔽 Liste des colonnes Excel détectées -->
-        <div style="margin-top: 1rem">
-          <label for="column-list">Colonnes Excel détectées :</label><br />
-          <select
-            id="column-list"
-            style="width: 100%; margin-top: 0.5rem"
-          ></select>
+        <!-- Liste des colonnes Excel détectées -->
+        <div class="column-selector">
+          <label for="column-list">Colonnes détectées :</label>
+          <select id="column-list"></select>
         </div>
       </section>
 
-      <!-- ⚙️ Étape 3 : Règles de correspondance -->
+      <!-- Étape 3 : Règles de correspondance -->
       <section class="card" data-mode="admin dev">
-        <h2>3. Configuration des règles d'import</h2>
-        <p>Choisis une règle pour chaque champ importé :</p>
+        <div class="card-header">
+          <h2>3. Configuration des règles d'import</h2>
+          <p>Définissez le comportement pour chaque champ lors de l'import</p>
+        </div>
         <div id="grist-rules-table" class="rules-grid"></div>
-        <button id="save-rules-btn" class="mt-4">
-          💾 Sauvegarder les règles
+        <button id="save-rules-btn" class="btn btn-primary">
+          Sauvegarder les règles
         </button>
       </section>
 
-      <!-- 🔑 Étape 4 : Clé de doublon -->
+      <!-- Étape 4 : Clé de doublon -->
       <section class="card" data-mode="admin dev">
-        <h2>4. Clé unique pour les doublons</h2>
-        <p>Sélectionne la colonne servant d'identifiant unique :</p>
-        <select
-          id="unique-key-dropdown"
-          style="width: 100%; margin-top: 0.5rem"
-        ></select>
+        <div class="card-header">
+          <h2>4. Clé unique pour les doublons</h2>
+          <p>Sélectionnez la colonne servant d'identifiant unique</p>
+        </div>
+        <div class="form-group">
+          <label for="unique-key-dropdown">Colonne clé unique :</label>
+          <select id="unique-key-dropdown"></select>
+        </div>
       </section>
 
-      <!-- 🚀 Étape 5 : Mapping & import -->
+      <!-- Étape 5 : Mapping & import -->
       <section class="card" data-mode="public dev">
-        <h2>5. Lancement de l'import</h2>
+        <div class="card-header">
+          <h2>5. Import des données</h2>
+          <p>Lancez l'import avec les paramètres configurés</p>
+        </div>
+        
+        <div class="import-actions">
+          <button id="match-columns-button" class="btn btn-secondary">
+            Faire correspondre les colonnes
+          </button>
 
-        <button id="match-columns-button" style="margin-top: 1rem">
-          🔁 Faire correspondre les colonnes Excel ↔ Grist
-        </button>
+          <div id="mapping-preview" class="mapping-preview"></div>
 
-        <div id="mapping-preview" class="mt-2"></div>
+          <button id="launch-import-btn" class="btn btn-primary btn-large">
+            Lancer l'import
+          </button>
+        </div>
 
-        <button id="launch-import-btn" class="mt-4">🚀 Lancer l'import</button>
-
-        <p id="import-status" class="mt-2"></p>
+        <div id="import-status" class="import-status"></div>
       </section>
     </div>
 
-    <!-- 📦 Scripts -->
+    <!-- Scripts -->
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <script type="module" src="../src/app.js"></script>

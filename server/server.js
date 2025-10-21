@@ -8,7 +8,7 @@ const path = require("path");
 // ⚙️ CONFIGURATION DE BASE
 // ==============================
 const app = express();
-const PORT = 8000;
+const PORT = 8001;
 
 // 📁 Définition du dossier public à servir
 const publicPath = path.join(__dirname, "..", "public");

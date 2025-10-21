@@ -4,7 +4,6 @@
 // avec les règles d'import entre Excel et Grist
 
 import { fetchImportRules } from "./rulesService.js";
-import { ensureRulesConfigTableExists } from "./adminService.js";
 import { DUPLICATION_RULES } from "../config.js";
 import { normalizeName } from "./utils.js";
 
@@ -193,13 +192,13 @@ export function updateMappingUI(mapping) {
   if (!container) return;
 
   container.innerHTML = `
-    <h4>🧠 Correspondances Excel ↔ Grist</h4>
-    <ul class="text-sm text-gray-300 pl-4 list-disc">
+    <h4>Correspondances Excel ↔ Grist</h4>
+    <ul>
       ${Object.entries(mapping)
         .map(
           ([excelCol, gristCol]) =>
-            `<li><strong>${excelCol}</strong> ➝ ${
-              gristCol || "❌ Aucun match"
+            `<li><strong>${excelCol}</strong> → ${
+              gristCol || "Aucun match"
             }</li>`
         )
         .join("")}
@@ -258,9 +257,9 @@ export async function initAdminRulesUI() {
         await grist.docApi.applyUserActions([
           ["UpdateRecord", "RULES_CONFIG", rowId, { rule: newRule }],
         ]);
-        console.log(`✅ Règle "${ruleObj.original}" mise à jour → ${newRule}`);
+        console.log(`Règle "${ruleObj.original}" mise à jour → ${newRule}`);
       } catch (err) {
-        console.error("❌ Erreur lors de la mise à jour de la règle :", err);
+        console.error("Erreur lors de la mise à jour de la règle :", err);
       }
     });
 
@@ -286,11 +285,11 @@ export async function initAdminRulesUI() {
         { is_key: normalizeName(col) === selectedKey },
       ]);
       await grist.docApi.applyUserActions(actions);
-      console.log(`🗝️ Clé unique mise à jour → ${selectedKey}`);
+      console.log(`Clé unique mise à jour → ${selectedKey}`);
     } catch (err) {
-      console.error("❌ Erreur lors de la mise à jour de la clé unique :", err);
+      console.error("Erreur lors de la mise à jour de la clé unique :", err);
     }
   });
 
-  console.log("✅ UI admin pré-remplie depuis Grist");
+  console.log("UI admin pré-remplie depuis Grist");
 }
