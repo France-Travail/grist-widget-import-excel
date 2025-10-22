@@ -3,7 +3,7 @@
 // =========================
 
 // Services Grist
-import { initGristListener, importToGrist } from "./services/gristService.js";
+import { initGristListener, importToGrist, getGristColumnTypes } from "./services/gristService.js";
 
 // Services Excel
 import { parseExcelFile, matchExcelToGrist } from "./services/excelService.js";
@@ -30,14 +30,17 @@ let gristCols = []; // Colonnes détectées dans la table Grist
 // =========================
 // 🚀 INITIALISATION GRIST
 // =========================
-initGristListener((records) => {
-  if (records.length > 0) {
-    const columnNames = Object.keys(records[0]);
+initGristListener(async (records) => {
+  // Récupère les colonnes même si la table est vide
+  const gristSchema = getGristColumnTypes();
+  const columnNames = Object.keys(gristSchema);
+  
+  if (columnNames.length > 0) {
     gristCols = columnNames;
-
     populateUniqueKeySelector(columnNames);
+    console.log("Colonnes Grist détectées:", columnNames);
   } else {
-    console.log("Aucune donnée reçue de Grist");
+    console.log("Aucune colonne détectée dans Grist");
   }
 });
 

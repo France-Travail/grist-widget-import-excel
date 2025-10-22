@@ -41,13 +41,13 @@ export function initGristListener(onRecordsReceived) {
 // Événement principal : réception des données du tableau sélectionné
   grist.onRecords(async (records) => {
     tableData = records || [];
-    gristSchema = detectColumnTypesFromRecords(records || []);
+    gristSchema = await detectColumnTypesFromRecords(records || []);
 
     // 🧩 Vérifie la présence de RULES_CONFIG avant de continuer
     const rulesOk = await ensureRulesTableExists();
     if (!rulesOk) {
       console.warn("⛔ Table RULES_CONFIG manquante — arrêt du chargement widget.");
-      return; // ⛔ stoppe le flux, l’UI du setup prend le relais
+      return; // ⛔ stoppe le flux, l'UI du setup prend le relais
     }
 
 
@@ -65,9 +65,12 @@ export function initGristListener(onRecordsReceived) {
   // Récupère l'ID de la table “active”
 }
 
-function detectColumnTypesFromRecords(records) {
+async function detectColumnTypesFromRecords(records) {
   const types = {};
-  if (!records || records.length === 0) return types;
+  if (!records || records.length === 0) {
+    // Si pas de données, on essaie de récupérer les colonnes via l'API Grist
+    return await getColumnTypesFromEmptyTable();
+  }
   const first = records[0];
   for (const [key, value] of Object.entries(first)) {
     if (key === "id" || key === "manualSort") continue;
@@ -78,6 +81,26 @@ function detectColumnTypesFromRecords(records) {
     else types[key] = "Text";
   }
   return types;
+}
+
+async function getColumnTypesFromEmptyTable() {
+  try {
+    // Récupère les métadonnées de la table pour avoir les colonnes même si elle est vide
+    const tableInfo = await grist.docApi.fetchTable(currentTableId);
+    const types = {};
+    
+    // Parcourt toutes les colonnes disponibles
+    for (const colName of Object.keys(tableInfo)) {
+      if (colName === "id" || colName === "manualSort") continue;
+      // Par défaut, on met "Text" pour les colonnes vides
+      types[colName] = "Text";
+    }
+    
+    return types;
+  } catch (error) {
+    console.warn("Impossible de récupérer les colonnes de la table vide:", error);
+    return {};
+  }
 }
 
 // =========================
@@ -282,7 +305,8 @@ export async function importToGrist({ excelData, mapping }) {
             excelVal !== "" &&
             !areEqual(excelVal, gristVal)
           ) {
-            updates[gristCol] = normalizeDate(excelVal) || excelVal;
+            // Appliquer normalizeDate seulement si c'est une colonne de type Date
+            updates[gristCol] = gristColIsDate.has(gristCol) ? (normalizeDate(excelVal) || excelVal) : excelVal;
             hasUpdate = true;
           }
         } else if (rule === "update_if_newer") {
@@ -290,7 +314,8 @@ export async function importToGrist({ excelData, mapping }) {
             const exDate = new Date(excelVal);
             const grDate = new Date(gristVal);
             if (!isNaN(exDate) && (isNaN(grDate) || exDate > grDate)) {
-              updates[gristCol] = normalizeDate(excelVal) || excelVal;
+              // Appliquer normalizeDate seulement si c'est une colonne de type Date
+              updates[gristCol] = gristColIsDate.has(gristCol) ? (normalizeDate(excelVal) || excelVal) : excelVal;
               hasUpdate = true;
             }
           }
@@ -301,7 +326,8 @@ export async function importToGrist({ excelData, mapping }) {
             excelVal !== undefined &&
             excelVal !== ""
           ) {
-            updates[gristCol] = normalizeDate(excelVal) || excelVal;
+            // Appliquer normalizeDate seulement si c'est une colonne de type Date
+            updates[gristCol] = gristColIsDate.has(gristCol) ? (normalizeDate(excelVal) || excelVal) : excelVal;
             hasUpdate = true;
           }
         } else if (rule === "append_if_different") {
@@ -328,7 +354,11 @@ export async function importToGrist({ excelData, mapping }) {
       const newRecord = {};
       for (const [norm, { gristCol }] of Object.entries(normalizedRules)) {
         // On insère uniquement les colonnes connues de Grist
-        if (norm in lineByNorm) newRecord[gristCol] = lineByNorm[norm];
+        if (norm in lineByNorm) {
+          const excelVal = lineByNorm[norm];
+          // Appliquer normalizeDate seulement si c'est une colonne de type Date
+          newRecord[gristCol] = gristColIsDate.has(gristCol) ? (normalizeDate(excelVal) || excelVal) : excelVal;
+        }
       }
       actions.push(["AddRecord", currentTableId, null, newRecord]);
       resume.push(`Ligne ${i + 1} : ADD → ${JSON.stringify(newRecord)}`);

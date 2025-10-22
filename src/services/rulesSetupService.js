@@ -69,11 +69,21 @@ function showMissingRulesUI(message) {
       <div class="card">
         <div class="card-header">
           <h2>Configuration manquante</h2>
-          <p>Ce widget nécessite une table RULES_CONFIG pour stocker les règles d'importation.</p>
+          <p>Ce widget nécessite une table <strong>RULES_CONFIG</strong> pour stocker les règles d'importation.</p>
         </div>
         
         <div class="form-group">
-          <p>Cliquez sur le bouton ci-dessous pour télécharger un modèle de table adapté à la table actuellement liée à ce widget.</p>
+          <div style="background: var(--info-light); color: var(--info-dark); padding: var(--spacing); border-radius: var(--radius-sm); margin: var(--spacing) 0; border: 1px solid var(--info);">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; font-weight: 600;">📋 Instructions d'installation :</h3>
+            <ol style="margin: 0; padding-left: 1.5rem;">
+              <li><strong>Téléchargez</strong> le modèle de table ci-dessous</li>
+              <li><strong>Importez</strong> ce fichier dans votre document Grist</li>
+              <li><strong>Conservez</strong> le nom de table par défaut : <code>RULES_CONFIG</code></li>
+              <li><strong>Retournez</strong> dans ce widget pour définir vos règles d'importation</li>
+            </ol>
+          </div>
+          
+          <p style="margin-top: 1rem;">Le modèle généré sera adapté aux colonnes de la table actuellement liée à ce widget.</p>
           ${message ? `<div style="background: var(--error-light); color: var(--error-dark); padding: var(--spacing); border-radius: var(--radius-sm); margin: var(--spacing) 0; border: 1px solid var(--error);">${message}</div>` : ""}
           
           <div class="import-actions">

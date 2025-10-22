@@ -241,6 +241,7 @@ export async function initAdminRulesUI() {
       const option = document.createElement("option");
       option.value = rule.value;
       option.textContent = rule.label;
+      option.title = rule.description; // Tooltip au survol
       if (rule.value === ruleObj.rule) option.selected = true;
       select.appendChild(option);
     }
@@ -258,13 +259,30 @@ export async function initAdminRulesUI() {
           ["UpdateRecord", "RULES_CONFIG", rowId, { rule: newRule }],
         ]);
         console.log(`Règle "${ruleObj.original}" mise à jour → ${newRule}`);
+        
+        // Mettre à jour la description
+        const selectedRule = DUPLICATION_RULES.find(r => r.value === newRule);
+        if (description) {
+          description.textContent = selectedRule?.description || "";
+        }
       } catch (err) {
         console.error("Erreur lors de la mise à jour de la règle :", err);
       }
     });
 
+    // Ajouter la description de la règle actuelle
+    const description = document.createElement("small");
+    description.style.display = "block";
+    description.style.marginTop = "0.25rem";
+    description.style.color = "var(--text-secondary)";
+    description.style.fontSize = "0.875rem";
+    description.style.lineHeight = "1.4";
+    const selectedRule = DUPLICATION_RULES.find(r => r.value === ruleObj.rule);
+    description.textContent = selectedRule?.description || "";
+
     row.appendChild(label);
     row.appendChild(select);
+    row.appendChild(description);
     rulesContainer.appendChild(row);
 
     const optionKey = document.createElement("option");
