@@ -89,13 +89,44 @@ async function getColumnTypesFromEmptyTable() {
     const tableInfo = await grist.docApi.fetchTable(currentTableId);
     const types = {};
     
+    console.log("🔍 DEBUG - Informations de la table vide:", tableInfo);
+    console.log("🔍 DEBUG - Colonnes disponibles:", Object.keys(tableInfo));
+    
     // Parcourt toutes les colonnes disponibles
     for (const colName of Object.keys(tableInfo)) {
       if (colName === "id" || colName === "manualSort") continue;
-      // Par défaut, on met "Text" pour les colonnes vides
-      types[colName] = "Text";
+      
+      // Essayer de détecter le type de colonne par le nom ou des indices
+      const lowerName = colName.toLowerCase();
+      
+      console.log(`🔍 DEBUG - Analyse de la colonne "${colName}" (${lowerName})`);
+      
+      // Détection basée sur le nom de la colonne
+      if (lowerName.includes('date') || lowerName.includes('time') || 
+          lowerName.includes('naissance') || lowerName.includes('créé') || 
+          lowerName.includes('modifié') || lowerName.includes('timestamp') ||
+          lowerName.includes('birth') || lowerName.includes('created') ||
+          lowerName.includes('updated') || lowerName.includes('modified')) {
+        types[colName] = "Date";
+        console.log(`✅ Colonne "${colName}" détectée comme Date`);
+      } else if (lowerName.includes('age') || lowerName.includes('nombre') || 
+                 lowerName.includes('count') || lowerName.includes('total') ||
+                 lowerName.includes('number') || lowerName.includes('amount')) {
+        types[colName] = "Numeric";
+        console.log(`✅ Colonne "${colName}" détectée comme Numeric`);
+      } else if (lowerName.includes('actif') || lowerName.includes('valid') || 
+                 lowerName.includes('enabled') || lowerName.includes('status') ||
+                 lowerName.includes('active') || lowerName.includes('is_')) {
+        types[colName] = "Bool";
+        console.log(`✅ Colonne "${colName}" détectée comme Bool`);
+      } else {
+        // Par défaut, on met "Text" pour les colonnes vides
+        types[colName] = "Text";
+        console.log(`⚠️ Colonne "${colName}" marquée comme Text par défaut`);
+      }
     }
     
+    console.log("📊 Types de colonnes détectés pour table vide:", types);
     return types;
   } catch (error) {
     console.warn("Impossible de récupérer les colonnes de la table vide:", error);
@@ -237,9 +268,11 @@ export async function importToGrist({ excelData, mapping }) {
   const resume = [];
 
   // Pre-calc : type Date par colonne (via nom Grist réel)
+  console.log("🔍 DEBUG - Schema Grist reçu:", gristColTypes);
   const gristColIsDate = new Set(
     gristCols.filter((c) => gristColTypes[c] === "Date")
   );
+  console.log("📊 Colonnes de type Date détectées:", Array.from(gristColIsDate));
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -257,7 +290,23 @@ export async function importToGrist({ excelData, mapping }) {
 
       let finalVal = val;
       if (gristColIsDate.has(gristCol)) {
-        finalVal = normalizeDate(val);
+        console.log(`🔍 DEBUG - Traitement date pour colonne "${gristCol}":`, {
+          valeurOriginale: val,
+          typeValeur: typeof val,
+          estColonneDate: gristColIsDate.has(gristCol)
+        });
+        
+        const normalizedDate = normalizeDate(val);
+        console.log(`🔍 DEBUG - Résultat normalizeDate:`, normalizedDate);
+        
+        // Si normalizeDate retourne null, garder la valeur originale
+        // (cela évite les "01-01-1970" par défaut)
+        if (normalizedDate !== null) {
+          finalVal = normalizedDate;
+          console.log(`✅ Date normalisée: ${val} → ${normalizedDate}`);
+        } else {
+          console.log(`⚠️ normalizeDate a retourné null, garde valeur originale: ${val}`);
+        }
       }
       lineByNorm[gristColNorm] = finalVal;
     }
@@ -423,7 +472,18 @@ function areEqual(a, b) {
 }
 
 function normalizeDate(value) {
+  // Si la valeur est null, undefined ou vide, ne pas traiter comme date
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  
   if (typeof value === "number") {
+    // Vérifier si c'est un code de date Excel valide (entre 1 et 2958465)
+    if (value < 1 || value > 2958465) {
+      console.warn(`Valeur numérique ${value} ne semble pas être un code de date Excel valide`);
+      return null;
+    }
+    
     const date = XLSX.SSF.parse_date_code(value);
     if (!date) return null;
     return new Date(Date.UTC(date.y, date.m - 1, date.d))
@@ -432,11 +492,17 @@ function normalizeDate(value) {
   }
   if (typeof value === "string") {
     const s = value.trim();
+    if (!s) return null;
+    
     // formats acceptés
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // déjà bon
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
       const [d, m, y] = s.split("/");
       return new Date(`${y}-${m}-${d}`).toISOString().split("T")[0];
+    }
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+      const [d, m, y] = s.split("/");
+      return new Date(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`).toISOString().split("T")[0];
     }
     return null;
   }
