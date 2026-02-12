@@ -1,54 +1,156 @@
 // ============================
-// 🧩 rulesSetupService.js
+// rulesSetupService.js
 // ============================
 
 import { getCurrentTableId, getCurrentGristData, getGristColumnTypes } from "./gristService.js";
 
-// Liste officielle des règles disponibles
-const DUPLICATION_RULES = [
-  "ignore",
-  "overwrite",
-  "update_if_newer",
-  "fill_if_empty",
-  "append_if_different",
-];
-
-
 /**
- * Vérifie la présence de la table RULES_CONFIG
- * @returns {boolean} true si présente, false sinon
+ * Verifie la presence de la table RULES_CONFIG.
+ * Si absente, tente de la creer automatiquement.
+ * Si presente, migre la colonne is_key si necessaire.
+ * @returns {boolean} true si prete, false sinon
  */
 export async function ensureRulesTableExists() {
   try {
-    const allTables = await grist.docApi.listTables(); // ✅ méthode supportée
+    const allTables = await grist.docApi.listTables();
     console.log("Tables existantes :", allTables);
 
-    const hasRules = allTables.includes("RULES_CONFIG");
-    if (!hasRules) {
-      console.warn("Table RULES_CONFIG absente — affichage du message utilisateur.");
-      showMissingRulesUI();
-      return false;
+    if (allTables.includes("RULES_CONFIG")) {
+      console.log("Table RULES_CONFIG trouvee.");
+      await migrateIsKeyColumn();
+      return true;
     }
 
-    console.log("Table RULES_CONFIG trouvée.");
-    return true;
+    // Table absente : tenter la creation automatique
+    console.warn("Table RULES_CONFIG absente, tentative de creation automatique...");
+    const created = await autoCreateRulesConfig();
+    if (created) {
+      console.log("Table RULES_CONFIG creee automatiquement.");
+      return true;
+    }
+
+    // Fallback : UI manuelle
+    showMissingRulesUI();
+    return false;
   } catch (err) {
-    console.error("Erreur lors de la vérification des tables :", err);
-    showMissingRulesUI("Impossible de récupérer la liste des tables.");
+    console.error("Erreur lors de la verification des tables :", err);
+    showMissingRulesUI("Impossible de recuperer la liste des tables.");
     return false;
   }
 }
+
 /**
- * Affiche un message clair si la table RULES_CONFIG est absente
+ * Cree automatiquement la table RULES_CONFIG dans Grist
+ * en se basant sur les colonnes de la table liee au widget.
+ * @returns {boolean} true si cree avec succes
  */
+async function autoCreateRulesConfig() {
+  try {
+    const schema = getGristColumnTypes();
+    const cols = Object.keys(schema).filter((c) => c !== "id" && c !== "manualSort");
+
+    if (cols.length === 0) {
+      console.warn("Aucune colonne detectee, impossible de creer RULES_CONFIG automatiquement.");
+      return false;
+    }
+
+    // Afficher un indicateur de chargement
+    showCreatingUI();
+
+    // 1) Creer la table avec ses colonnes
+    const actions = [
+      ["AddTable", "RULES_CONFIG", [
+        { id: "col_name", type: "Text" },
+        { id: "is_key", type: "Bool" },
+        { id: "rule", type: "Text" },
+      ]],
+    ];
+
+    // 2) Ajouter une ligne par colonne de la table liee
+    cols.forEach((col, i) => {
+      actions.push([
+        "AddRecord", "RULES_CONFIG", null, {
+          col_name: col,
+          is_key: i === 0, // Premiere colonne = cle unique par defaut
+          rule: "ignore",
+        },
+      ]);
+    });
+
+    await grist.docApi.applyUserActions(actions);
+    console.log(`RULES_CONFIG creee avec ${cols.length} colonne(s).`);
+
+    // Masquer l'indicateur
+    hideCreatingUI();
+
+    return true;
+  } catch (err) {
+    console.error("Erreur lors de la creation automatique de RULES_CONFIG:", err);
+    hideCreatingUI();
+    return false;
+  }
+}
+
+/**
+ * Ajoute la colonne is_key a RULES_CONFIG si elle n'existe pas.
+ * Par defaut, la premiere ligne obtient is_key=true (compat ascendante).
+ */
+async function migrateIsKeyColumn() {
+  try {
+    const data = await grist.docApi.fetchTable("RULES_CONFIG");
+
+    // Si is_key existe deja, rien a faire
+    if (data.is_key !== undefined) return;
+
+    console.warn("Migration: colonne is_key absente dans RULES_CONFIG, ajout automatique...");
+
+    await grist.docApi.applyUserActions([
+      ["AddColumn", "RULES_CONFIG", "is_key", { type: "Bool" }],
+    ]);
+
+    if (data.id?.length > 0) {
+      const actions = data.id.map((rowId, i) => [
+        "UpdateRecord", "RULES_CONFIG", rowId, { is_key: i === 0 },
+      ]);
+      await grist.docApi.applyUserActions(actions);
+      console.log("Migration: is_key ajoute, premiere colonne definie comme cle unique.");
+    }
+  } catch (err) {
+    console.warn("Migration is_key impossible (peut-etre deja presente):", err);
+  }
+}
+
+// =========================
+// UI : indicateur de creation
+// =========================
+
+function showCreatingUI() {
+  const container = document.querySelector(".container");
+  if (!container) return;
+
+  const banner = document.createElement("div");
+  banner.id = "rules-creating-banner";
+  banner.style.cssText = "padding: 1rem 1.5rem; background: #dbeafe; color: #1e40af; border-bottom: 1px solid #93c5fd; text-align: center; font-weight: 500; font-size: 0.9rem;";
+  banner.textContent = "Creation automatique de la table RULES_CONFIG en cours...";
+  container.prepend(banner);
+}
+
+function hideCreatingUI() {
+  const banner = document.getElementById("rules-creating-banner");
+  if (banner) banner.remove();
+}
+
+// =========================
+// UI : fallback manuel (si auto-creation echoue)
+// =========================
+
 function showMissingRulesUI(message) {
   let container = document.getElementById("app");
 
-  // Si le conteneur n'existe pas encore, on le crée
   if (!container) {
     container = document.createElement("div");
     container.id = "app";
-    document.body.innerHTML = ""; // on nettoie le reste si nécessaire
+    document.body.innerHTML = "";
     document.body.appendChild(container);
   }
 
@@ -62,36 +164,33 @@ function showMissingRulesUI(message) {
             </svg>
           </div>
           <h1>Table RULES_CONFIG absente</h1>
-          <p class="subtitle">Configuration requise pour le fonctionnement du widget</p>
+          <p class="subtitle">La creation automatique a echoue. Vous pouvez creer la table manuellement.</p>
         </div>
       </div>
-      
+
       <div class="card">
         <div class="card-header">
           <h2>Configuration manquante</h2>
-          <p>Ce widget nécessite une table <strong>RULES_CONFIG</strong> pour stocker les règles d'importation.</p>
+          <p>Ce widget necessite une table <strong>RULES_CONFIG</strong> pour stocker les regles d'importation.</p>
         </div>
-        
+
         <div class="form-group">
-          <div style="background: var(--info-light); color: var(--info-dark); padding: var(--spacing); border-radius: var(--radius-sm); margin: var(--spacing) 0; border: 1px solid var(--info);">
-            <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; font-weight: 600;">📋 Instructions d'installation :</h3>
+          <div style="background: #dbeafe; color: #1e40af; padding: 0.75rem; border-radius: 4px; margin: 0.75rem 0; border: 1px solid #93c5fd;">
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1rem; font-weight: 600;">Instructions :</h3>
             <ol style="margin: 0; padding-left: 1.5rem;">
-              <li><strong>Téléchargez</strong> le modèle de table ci-dessous</li>
+              <li><strong>Telechargez</strong> le modele de table ci-dessous</li>
               <li><strong>Importez</strong> ce fichier dans votre document Grist</li>
-              <li><strong>Conservez</strong> le nom de table par défaut : <code>RULES_CONFIG</code></li>
-              <li><strong>Retournez</strong> dans ce widget pour définir vos règles d'importation</li>
+              <li><strong>Conservez</strong> le nom de table par defaut : <code>RULES_CONFIG</code></li>
+              <li><strong>Retournez</strong> dans ce widget pour definir vos regles d'importation</li>
             </ol>
           </div>
-          
-          <p style="margin-top: 1rem;">Le modèle généré sera adapté aux colonnes de la table actuellement liée à ce widget.</p>
-          ${message ? `<div style="background: var(--error-light); color: var(--error-dark); padding: var(--spacing); border-radius: var(--radius-sm); margin: var(--spacing) 0; border: 1px solid var(--error);">${message}</div>` : ""}
-          
+
+          <p style="margin-top: 1rem;">Le modele genere sera adapte aux colonnes de la table actuellement liee a ce widget.</p>
+          ${message ? `<div style="background: #fef2f2; color: #991b1b; padding: 0.75rem; border-radius: 4px; margin: 0.75rem 0; border: 1px solid #fecaca;">${message}</div>` : ""}
+
           <div class="import-actions">
             <button id="generate-rules-template" class="btn btn-primary btn-large">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px;">
-                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
-              </svg>
-              Télécharger modèle RULES_CONFIG
+              Telecharger modele RULES_CONFIG
             </button>
           </div>
         </div>
@@ -103,40 +202,37 @@ function showMissingRulesUI(message) {
     .getElementById("generate-rules-template")
     .addEventListener("click", generateRulesTemplate);
 }
+
 /**
- * Génère dynamiquement un fichier Excel RULES_CONFIG_TEMPLATE.xlsx
+ * Genere dynamiquement un fichier Excel RULES_CONFIG.xlsx
  * contenant une ligne par colonne de la table Grist active.
+ * Utilise en fallback si la creation auto a echoue.
  */
 async function generateRulesTemplate() {
   try {
-    console.log("📦 Génération du modèle RULES_CONFIG_TEMPLATE.xlsx...");
-
     const tableId = getCurrentTableId();
     if (!tableId) {
-      alert("❌ Impossible d'identifier la table active. Ouvrez le widget dans une vue liée à une table.");
+      alert("Impossible d'identifier la table active. Ouvrez le widget dans une vue liee a une table.");
       return;
     }
 
-    const records = getCurrentGristData();
     const schema = getGristColumnTypes();
-
-    if (!records?.length && Object.keys(schema).length === 0) {
-      alert("❌ Impossible de détecter les colonnes. Assurez-vous qu'une table est liée et contient au moins une ligne.");
+    if (Object.keys(schema).length === 0) {
+      alert("Impossible de detecter les colonnes. Assurez-vous qu'une table est liee et contient au moins une ligne.");
       return;
     }
 
     const cols = Object.keys(schema).filter((c) => c !== "id" && c !== "manualSort");
     if (!cols.length) {
-      alert("❌ Aucune colonne détectée dans la table liée.");
+      alert("Aucune colonne detectee dans la table liee.");
       return;
     }
 
-    // ✅ Table Excel brute sans superflu
     const data = [["col_name", "is_key", "rule"]];
     cols.forEach((col, i) => data.push([col, i === 0 ? true : false, "ignore"]));
 
     if (typeof XLSX === "undefined") {
-      alert("❌ Le module XLSX n'est pas chargé. Vérifiez que le script CDN est bien inclus.");
+      alert("Le module XLSX n'est pas charge.");
       return;
     }
 
@@ -145,11 +241,10 @@ async function generateRulesTemplate() {
     XLSX.utils.book_append_sheet(wb, ws, "RULES_CONFIG");
     XLSX.writeFile(wb, "RULES_CONFIG.xlsx");
 
-    console.log("✅ RULES_CONFIG_TEMPLATE.xlsx généré avec succès.");
-    alert("✅ Modèle RULES_CONFIG téléchargé avec succès !");
+    alert("Modele RULES_CONFIG telecharge avec succes !");
   } catch (err) {
-    console.error("🔥 Erreur génération modèle RULES_CONFIG:", err);
-    alert("❌ Erreur lors de la génération du modèle RULES_CONFIG.");
+    console.error("Erreur generation modele RULES_CONFIG:", err);
+    alert("Erreur lors de la generation du modele RULES_CONFIG.");
   }
 }
 

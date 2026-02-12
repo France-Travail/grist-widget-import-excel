@@ -1,72 +1,108 @@
 // =========================
-// 📦 IMPORT
+// excelService.js - Parsing Excel multi-onglets
 // =========================
 
-import { setExcelData } from "./uiService.js"; // 🧠 stockage global des données
-import { normalizeName } from "./utils.js"; // 🔧 normalisation unique
-
-// =========================
-// 📄 PARSE DU FICHIER EXCEL
-// =========================
+import {
+  setExcelData, setExcelWorkbook, setExcelFileName, setSelectedSheets,
+  getExcelWorkbook
+} from "./state.js";
+import { normalizeName } from "./utils.js";
 
 /**
- * Parse un fichier Excel (première feuille uniquement)
- * Nettoie les colonnes vides et normalise les lignes.
+ * Parse un fichier Excel et stocke le workbook complet.
+ * Retourne la liste des noms d'onglets.
  *
- * @param {File} file - Fichier Excel sélectionné
- * @param {Function} callback - Fonction appelée avec les données corrigées
+ * @param {File} file - Fichier Excel selectionne
+ * @param {Function} callback - Appelee avec { sheetNames: string[], firstSheetData: any[][] }
  */
 export function parseExcelFile(file, callback) {
   const reader = new FileReader();
 
   reader.onload = (e) => {
     const data = new Uint8Array(e.target.result);
-    const workbook = XLSX.read(data, { type: "array" });
+    // SheetJS gere automatiquement .xlsx, .xls et .csv
+    const workbook = XLSX.read(data, { type: "array", codepage: 65001 });
 
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
+    setExcelWorkbook(workbook);
+    setExcelFileName(file.name);
 
-    const raw = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    const sheetNames = workbook.SheetNames;
 
-    if (!raw.length) {
-      console.warn("⚠️ Fichier Excel vide ou illisible");
-      return callback([]);
+    if (!sheetNames.length) {
+      console.warn("Fichier Excel vide ou illisible");
+      callback({ sheetNames: [], firstSheetData: [] });
+      return;
     }
 
-    // === Étape 1 : Nettoyer les headers ===
-    const header = raw[0].map((h) => (h ? String(h).trim() : ""));
-    const validIndexes = header
-      .map((h, i) => (h !== "" ? i : null))
-      .filter((i) => i !== null);
+    // Par defaut, selectionne tous les onglets
+    setSelectedSheets([...sheetNames]);
 
-    const cleaned = raw.map((row) => validIndexes.map((i) => row[i] ?? ""));
+    // Parse le premier onglet pour la preview
+    const firstSheetData = parseSheet(workbook, sheetNames[0]);
+    setExcelData(firstSheetData);
 
-    // === Étape 2 : Normaliser la longueur des lignes ===
-    const maxLength = cleaned[0]?.length || 0;
-    const fixed = cleaned.map((row) => {
-      const newRow = Array.from(row);
-      while (newRow.length < maxLength) newRow.push("");
-      return newRow;
-    });
-
-    setExcelData(fixed); // 🧠 Stockage global dans le state UI
-    callback(fixed); // ↩️ Envoi au callback pour suite de traitement
+    callback({ sheetNames, firstSheetData });
   };
 
   reader.readAsArrayBuffer(file);
 }
 
-// =========================
-// 🔁 MATCHING COLONNES Excel ↔ Grist
-// =========================
+/**
+ * Parse un onglet specifique du workbook en memoire.
+ *
+ * @param {Object} workbook - Workbook SheetJS
+ * @param {string} sheetName - Nom de l'onglet
+ * @returns {any[][]} Donnees nettoyees [headers, ...rows]
+ */
+export function parseSheet(workbook, sheetName) {
+  const worksheet = workbook.Sheets[sheetName];
+  if (!worksheet) return [];
+
+  const raw = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+  if (!raw.length) return [];
+
+  // Nettoyer les headers
+  const header = raw[0].map((h) => (h ? String(h).trim() : ""));
+  const validIndexes = header
+    .map((h, i) => (h !== "" ? i : null))
+    .filter((i) => i !== null);
+
+  const cleaned = raw.map((row) => validIndexes.map((i) => row[i] ?? ""));
+
+  // Normaliser la longueur des lignes
+  const maxLength = cleaned[0]?.length || 0;
+  const fixed = cleaned.map((row) => {
+    const newRow = Array.from(row);
+    while (newRow.length < maxLength) newRow.push("");
+    return newRow;
+  });
+
+  return fixed;
+}
 
 /**
- * Essaie de faire correspondre chaque colonne Excel avec une colonne Grist
- * via comparaison normalisée (insensible aux accents, casses, etc.)
+ * Retourne les donnees parsees pour les onglets selectionnes.
  *
- * @param {string[]} excelCols - Titres des colonnes du fichier Excel
- * @param {string[]} gristCols - Titres des colonnes de Grist
- * @returns {Object} mapping Excel → Grist
+ * @param {string[]} sheetNames - Noms des onglets a parser
+ * @returns {{ sheetName: string, data: any[][] }[]}
+ */
+export function parseSheetsData(sheetNames) {
+  const workbook = getExcelWorkbook();
+  if (!workbook) return [];
+
+  return sheetNames.map((name) => ({
+    sheetName: name,
+    data: parseSheet(workbook, name),
+  }));
+}
+
+/**
+ * Matching colonnes Excel <-> Grist via normalisation.
+ *
+ * @param {string[]} excelCols - Titres des colonnes Excel
+ * @param {string[]} gristCols - Titres des colonnes Grist
+ * @returns {Object} mapping Excel -> Grist
  */
 export function matchExcelToGrist(excelCols, gristCols) {
   const mapping = {};
@@ -77,24 +113,21 @@ export function matchExcelToGrist(excelCols, gristCols) {
   }));
 
   excelCols.forEach((col) => {
-    if (!col || col.trim() === "") return; // ⚠️ skip colonnes vides
+    if (!col || col.trim() === "") return;
     const normCol = normalizeName(col);
     const match = normalizedGristCols.find((g) => g.norm === normCol);
-    mapping[col] = match?.original || ""; // vide si aucun match
+    mapping[col] = match?.original || "";
   });
 
-  // Debug clair 🔎
-  console.group("📊 DEBUG MATCHING Excel ↔ Grist");
+  console.group("Matching Excel <-> Grist");
   console.table(
     excelCols.map((excelCol) => ({
-      "Excel column": excelCol || "(colonne vide)",
-      Normalized: normalizeName(excelCol || ""),
-      "Matched Grist column": mapping[excelCol] || "❌ Aucun match",
+      "Excel": excelCol || "(vide)",
+      "Normalise": normalizeName(excelCol || ""),
+      "Grist": mapping[excelCol] || "Aucun match",
     }))
   );
   console.groupEnd();
 
   return mapping;
 }
-
-

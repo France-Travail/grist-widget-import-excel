@@ -1,21 +1,20 @@
 // =========================
-// 📥 FETCH DES RÈGLES D’IMPORT DEPUIS LA TABLE "RULES_CONFIG"
+// rulesService.js - Lecture RULES_CONFIG + metadonnees colonnes
 // =========================
 
 import { normalizeName, cleanLabel } from "./utils.js";
 
 /**
- * Récupère les règles de traitement pour chaque colonne depuis RULES_CONFIG.
- * Les noms de colonnes sont normalisés pour être cohérents avec Excel et Grist.
+ * Recupere les regles depuis RULES_CONFIG.
+ * Supporte la cle composite (plusieurs is_key=true).
  *
- * @param {string} tableName - Nom de la table (défaut : RULES_CONFIG)
- * @returns {Promise<{rules: Object, uniqueKey: string|null}>}
+ * @returns {Promise<{rules: Object, uniqueKeys: string[], uniqueKey: string|null}>}
  */
 export async function fetchImportRules(tableName = "RULES_CONFIG") {
   try {
     const result = await grist.docApi.fetchTable(tableName);
     const rules = {};
-    let uniqueKey = null;
+    const uniqueKeys = [];
 
     const nbRows = result.col_name?.length || 0;
 
@@ -30,7 +29,7 @@ export async function fetchImportRules(tableName = "RULES_CONFIG") {
       const clean = cleanLabel(rawColName);
 
       if (isKey) {
-        uniqueKey = normalized; // ⚠️ clé unique aussi en version normalisée
+        uniqueKeys.push(normalized);
       }
 
       rules[normalized] = {
@@ -40,13 +39,70 @@ export async function fetchImportRules(tableName = "RULES_CONFIG") {
       };
     }
 
-    if (!uniqueKey) {
-      console.warn("Aucune clé unique définie dans rules_config !");
+    if (uniqueKeys.length === 0) {
+      console.warn("Aucune cle unique definie dans RULES_CONFIG !");
     }
 
-    return { rules, uniqueKey };
+    // Compatibilite ascendante : uniqueKey = premiere cle ou null
+    const uniqueKey = uniqueKeys.length > 0 ? uniqueKeys[0] : null;
+
+    return { rules, uniqueKeys, uniqueKey };
   } catch (e) {
-    console.error("Erreur lors du chargement des règles :", e);
-    return { rules: {}, uniqueKey: null };
+    console.error("Erreur lors du chargement des regles :", e);
+    return { rules: {}, uniqueKeys: [], uniqueKey: null };
+  }
+}
+
+/**
+ * Recupere les metadonnees des colonnes Grist (formules, types reels, references).
+ * Utilise la table interne _grist_Tables_column.
+ *
+ * @param {string} tableId - ID de la table cible
+ * @returns {Promise<Object>} { colId: { isFormula, type, refTable } }
+ */
+export async function fetchColumnMetadata(tableId) {
+  try {
+    // Recuperer les metadonnees des tables pour trouver le tableRef
+    const tablesData = await grist.docApi.fetchTable("_grist_Tables");
+    const tableIdx = tablesData.tableId?.indexOf(tableId);
+    if (tableIdx === -1 || tableIdx === undefined) {
+      console.warn("Table non trouvee dans _grist_Tables:", tableId);
+      return {};
+    }
+    const tableRef = tablesData.id[tableIdx];
+
+    // Recuperer les colonnes de cette table
+    const colsData = await grist.docApi.fetchTable("_grist_Tables_column");
+    const metadata = {};
+
+    for (let i = 0; i < (colsData.colId?.length || 0); i++) {
+      // Filtrer par parentId = tableRef
+      if (colsData.parentId[i] !== tableRef) continue;
+
+      const colId = colsData.colId[i];
+      const isFormula = colsData.isFormula?.[i] || false;
+      const formula = colsData.formula?.[i] || "";
+      const colType = colsData.type?.[i] || "Any";
+
+      // Determiner si c'est une colonne Reference
+      let refTable = null;
+      if (colType.startsWith("Ref:")) {
+        refTable = colType.replace("Ref:", "");
+      } else if (colType.startsWith("RefList:")) {
+        refTable = colType.replace("RefList:", "");
+      }
+
+      metadata[colId] = {
+        isFormula: isFormula && formula !== "",
+        type: colType,
+        refTable,
+        formula,
+      };
+    }
+
+    return metadata;
+  } catch (err) {
+    console.warn("Impossible de lire les metadonnees colonnes:", err);
+    return {};
   }
 }

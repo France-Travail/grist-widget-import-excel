@@ -654,3 +654,415 @@ select:focus,
 #rules-summary li {
   margin-bottom: 0.25rem;
 }
+
+/* ==========================
+   SELECTEUR D'ONGLETS
+   ========================== */
+.sheet-selector-area {
+  padding: var(--spacing-lg);
+}
+
+.sheet-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.sheet-count {
+  font-weight: var(--font-weight-semibold);
+  color: var(--primary);
+  font-size: var(--font-size-sm);
+}
+
+.sheet-selector-actions {
+  display: flex;
+  gap: var(--spacing);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+  padding: 0;
+}
+
+.btn-link:hover {
+  color: var(--primary-dark);
+}
+
+.sheet-checkboxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.sheet-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: var(--font-size-sm);
+}
+
+.sheet-checkbox-label:hover {
+  border-color: var(--primary);
+  background: var(--primary-50);
+}
+
+.sheet-checkbox-label input[type="checkbox"] {
+  accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
+}
+
+.sheet-name {
+  flex: 1;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.sheet-badge {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: var(--background-alt);
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+}
+
+/* ==========================
+   BARRE DE PROGRESSION
+   ========================== */
+.progress-bar-wrapper {
+  padding: var(--spacing);
+}
+
+.progress-bar-track {
+  width: 100%;
+  height: 8px;
+  background: var(--background-alt);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
+  border-radius: var(--radius-full);
+  transition: width 150ms ease;
+}
+
+.progress-bar-text {
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-top: var(--spacing-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ==========================
+   RAPPORT DE VALIDATION
+   ========================== */
+.validation-report {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.validation-errors {
+  background: #fef2f2;
+  color: #991b1b;
+  padding: var(--spacing) var(--spacing-lg);
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.validation-errors strong {
+  display: block;
+  margin-bottom: var(--spacing-xs);
+}
+
+.validation-errors ul,
+.validation-warnings ul {
+  margin: 0;
+  padding-left: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+}
+
+.validation-warnings {
+  background: #fffbeb;
+  color: #92400e;
+  padding: var(--spacing) var(--spacing-lg);
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.validation-warnings strong {
+  display: block;
+  margin-bottom: var(--spacing-xs);
+}
+
+.validation-ok {
+  background: #f0fdf4;
+  color: #166534;
+  padding: var(--spacing) var(--spacing-lg);
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ==========================
+   STATS D'IMPORT
+   ========================== */
+.import-stats {
+  display: flex;
+  gap: var(--spacing);
+  margin: var(--spacing) 0;
+  flex-wrap: wrap;
+}
+
+.stat-added,
+.stat-updated,
+.stat-skipped {
+  padding: var(--spacing-xs) var(--spacing);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.stat-added {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.stat-updated {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.stat-skipped {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+/* ==========================
+   MAPPING STATS
+   ========================== */
+.mapping-stats {
+  display: flex;
+  gap: var(--spacing);
+  margin-bottom: var(--spacing);
+}
+
+.mapping-stat-matched {
+  color: var(--success-dark);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-sm);
+}
+
+.mapping-stat-unmatched {
+  color: var(--warning-dark);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--font-size-sm);
+}
+
+.mapping-unmatched {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ==========================
+   BOUTONS IMPORT
+   ========================== */
+.import-buttons-row {
+  display: flex;
+  gap: var(--spacing);
+  align-items: center;
+}
+
+/* ==========================
+   OVERLAY ADMIN (onEditOptions)
+   ========================== */
+.admin-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.admin-panel {
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.admin-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.admin-panel-header h2 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: var(--spacing-xs);
+  border-radius: var(--radius);
+  transition: all var(--transition-fast);
+  line-height: 1;
+}
+
+.btn-close:hover {
+  background: var(--background-alt);
+  color: var(--text-primary);
+}
+
+.admin-panel-body {
+  padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+.admin-hint {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--spacing);
+  font-style: italic;
+}
+
+/* ==========================
+   RULE DESCRIPTION TEXT
+   ========================== */
+.rule-description-text {
+  display: block;
+  margin-top: var(--spacing-xs);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+
+/* ==========================
+   FORMULA COLUMN INDICATOR
+   ========================== */
+.rule-row-formula {
+  opacity: 0.6;
+  background-color: var(--background-alt) !important;
+  border-left: 3px solid var(--warning);
+}
+
+.rule-row-formula label {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.rule-row-formula select {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==========================
+   CLE UNIQUE COMPOSITE (CHECKBOXES)
+   ========================== */
+.unique-key-checkboxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.unique-key-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.unique-key-checkbox-label:hover {
+  border-color: var(--primary);
+  background: var(--primary-50);
+}
+
+.unique-key-checkbox-label input[type="checkbox"] {
+  accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
+}
+
+.unique-key-checkbox-label.formula-col {
+  opacity: 0.5;
+  cursor: not-allowed;
+  font-style: italic;
+}
+
+/* ==========================
+   STAT ERREURS
+   ========================== */
+.stat-errors {
+  padding: var(--spacing-xs) var(--spacing);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+/* ==========================
+   BOUTON DANGER (ROLLBACK)
+   ========================== */
+.btn-danger {
+  background: linear-gradient(135deg, var(--error) 0%, var(--error-light) 100%);
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--error-dark) 0%, var(--error) 100%);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ==========================
+   BOUTON RETOUR ADMIN
+   ========================== */
+.admin-back-btn {
+  margin: var(--spacing-lg) var(--spacing-xl) 0;
+}

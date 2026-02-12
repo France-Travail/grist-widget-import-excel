@@ -4,20 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Import Excel vers Grist</title>
-
-    <!-- Feuilles de style -->
     <link rel="stylesheet" href="styles/style.css" />
   </head>
 
   <body>
     <div class="container">
-      <!-- Sélecteur de mode -->
-      <div class="mode-selector">
+      <!-- Selecteur de mode (visible uniquement en mode dev via ?mode=dev) -->
+      <div class="mode-selector" id="mode-selector-wrapper">
         <label for="mode-selector">Mode :</label>
         <select id="mode-selector">
           <option value="public" selected>Utilisateur</option>
           <option value="admin">Administration</option>
-          <option value="dev">Développement</option>
+          <option value="dev">Developpement</option>
         </select>
       </div>
 
@@ -33,18 +31,18 @@
             </svg>
           </div>
           <h1>Import Excel vers Grist</h1>
-          <p class="subtitle">Importez vos données Excel avec des règles de gestion des doublons configurables</p>
+          <p class="subtitle">Importez vos donnees Excel avec gestion intelligente des doublons</p>
         </div>
       </header>
 
-      <!-- Étape 1 : Chargement du fichier Excel -->
+      <!-- Etape 1 : Chargement du fichier Excel -->
       <section class="card" data-mode="public dev">
         <div class="card-header">
-          <h2>1. Sélection du fichier</h2>
+          <h2>1. Selection du fichier</h2>
         </div>
         <div class="file-upload-area">
           <div class="file-input-wrapper">
-            <input type="file" id="file-input" accept=".xlsx" />
+            <input type="file" id="file-input" accept=".xlsx,.xls,.csv" />
             <label for="file-input" class="file-input-label">
               <div class="upload-icon">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -55,61 +53,72 @@
                   <path d="M10 9H9H8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </div>
-              <span class="upload-text">Choisir un fichier Excel</span>
-              <span class="upload-hint">Format .xlsx uniquement</span>
+              <span class="upload-text">Choisir un fichier</span>
+              <span class="upload-hint">Formats : .xlsx, .xls, .csv</span>
             </label>
           </div>
           <div id="file-name" class="file-selected"></div>
         </div>
       </section>
 
-      <!-- Étape 2 : Prévisualisation des données -->
+      <!-- Selecteur d'onglets (affiche dynamiquement si multi-onglets) -->
+      <section class="card" data-mode="public dev" id="sheet-selector-section" style="display:none">
+        <div class="card-header">
+          <h2>Onglets du fichier</h2>
+          <p>Selectionnez les onglets a importer</p>
+        </div>
+        <div id="sheet-selector-container" class="sheet-selector-area"></div>
+      </section>
+
+      <!-- Etape 2 : Previsualisation des donnees -->
       <section class="card" data-mode="dev">
         <div class="card-header">
-          <h2>2. Prévisualisation des données</h2>
+          <h2>2. Previsualisation des donnees</h2>
         </div>
         <div id="preview-container">
           <div class="table-wrapper"></div>
         </div>
-
-        <!-- Liste des colonnes Excel détectées -->
         <div class="column-selector">
-          <label for="column-list">Colonnes détectées :</label>
+          <label for="column-list">Colonnes detectees :</label>
           <select id="column-list"></select>
         </div>
       </section>
 
-      <!-- Étape 3 : Règles de correspondance -->
+      <!-- Bouton retour a l'import (visible uniquement en mode admin) -->
+      <button id="admin-back-btn" class="btn btn-secondary admin-back-btn" style="display:none">
+        ← Retour a l'import
+      </button>
+
+      <!-- Etape 3 : Regles de correspondance (admin/dev, aussi dans l'overlay admin) -->
       <section class="card" data-mode="admin dev">
         <div class="card-header">
-          <h2>3. Configuration des règles d'import</h2>
-          <p>Définissez le comportement pour chaque champ lors de l'import</p>
+          <h2>3. Configuration des regles d'import</h2>
+          <p>Definissez le comportement pour chaque champ lors de l'import</p>
         </div>
         <div id="grist-rules-table" class="rules-grid"></div>
         <button id="save-rules-btn" class="btn btn-primary">
-          Sauvegarder les règles
+          Sauvegarder les regles
         </button>
       </section>
 
-      <!-- Étape 4 : Clé de doublon -->
+      <!-- Etape 4 : Cle de doublon composite (admin/dev) -->
       <section class="card" data-mode="admin dev">
         <div class="card-header">
-          <h2>4. Clé unique pour les doublons</h2>
-          <p>Sélectionnez la colonne servant d'identifiant unique</p>
+          <h2>4. Cle(s) unique(s) pour les doublons</h2>
+          <p>Cochez une ou plusieurs colonnes pour former la cle d'identification des doublons</p>
         </div>
         <div class="form-group">
-          <label for="unique-key-dropdown">Colonne clé unique :</label>
-          <select id="unique-key-dropdown"></select>
+          <div id="unique-key-checkboxes" class="unique-key-checkboxes"></div>
         </div>
       </section>
 
-      <!-- Étape 5 : Mapping & import -->
+      <!-- Etape 5 : Mapping, validation & import -->
       <section class="card" data-mode="public dev">
         <div class="card-header">
-          <h2>5. Import des données</h2>
-          <p>Lancez l'import avec les paramètres configurés</p>
+          <h2>5. Import des donnees</h2>
+          <p>Lancez l'import avec les parametres configures</p>
         </div>
-        
+
         <div class="import-actions">
           <button id="match-columns-button" class="btn btn-secondary">
             Faire correspondre les colonnes
@@ -117,13 +126,42 @@
 
           <div id="mapping-preview" class="mapping-preview"></div>
 
-          <button id="launch-import-btn" class="btn btn-primary btn-large">
-            Lancer l'import
-          </button>
+          <!-- Rapport de validation -->
+          <div id="validation-report" class="validation-report" style="display:none"></div>
+
+          <!-- Barre de progression -->
+          <div id="progress-container" style="display:none"></div>
+
+          <div class="import-buttons-row">
+            <button id="dry-run-btn" class="btn btn-secondary">
+              Simuler l'import
+            </button>
+            <button id="launch-import-btn" class="btn btn-primary btn-large">
+              Lancer l'import
+            </button>
+            <button id="rollback-btn" class="btn btn-danger" style="display:none">
+              Annuler le dernier import
+            </button>
+          </div>
         </div>
 
         <div id="import-status" class="import-status"></div>
       </section>
+    </div>
+
+    <!-- Overlay Admin (ouvert via l'engrenage Grist onEditOptions) -->
+    <div id="admin-overlay" class="admin-overlay" style="display:none">
+      <div class="admin-panel">
+        <div class="admin-panel-header">
+          <h2>Configuration du widget</h2>
+          <button id="admin-close-btn" class="btn-close" title="Fermer">&times;</button>
+        </div>
+        <div class="admin-panel-body">
+          <p class="admin-hint">Ces parametres sont accessibles uniquement via l'engrenage du widget (editeurs du document).</p>
+          <!-- Le contenu admin est dans les sections data-mode="admin" au-dessus -->
+          <p>Utilisez les sections "Configuration des regles" et "Cle unique" ci-dessous pour configurer l'import.</p>
+        </div>
+      </div>
     </div>
 
     <!-- Scripts -->
