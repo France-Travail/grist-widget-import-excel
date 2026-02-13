@@ -12,6 +12,7 @@ import {
   setColumnMetadata, getColumnMetadata,
   setRefCache, getRefCache,
   getSessionId, setLastRollbackData, setLastRollbackLogId,
+  isImportLogMigrated, setImportLogMigrated,
 } from "./state.js";
 
 // =========================
@@ -765,8 +766,11 @@ export async function logImport({ fileName, sheetName, stats, dryRun, rollbackDa
 
 /**
  * Ajoute session_id et rolled_back a IMPORT_LOG si absentes.
+ * Ne s'execute qu'une seule fois par session.
  */
 async function migrateImportLogColumns() {
+  if (isImportLogMigrated()) return;
+
   try {
     const data = await grist.docApi.fetchTable("IMPORT_LOG");
     const actions = [];
@@ -780,6 +784,7 @@ async function migrateImportLogColumns() {
       await grist.docApi.applyUserActions(actions);
       console.log("Migration IMPORT_LOG: colonnes session_id/rolled_back ajoutees.");
     }
+    setImportLogMigrated(true);
   } catch (err) {
     console.warn("Migration IMPORT_LOG impossible:", err);
   }

@@ -32,6 +32,10 @@ const state = {
   sessionId: crypto.randomUUID(),  // Unique par onglet/session navigateur
   lastRollbackData: null,          // Rollback data du dernier import de CETTE session
   lastRollbackLogId: null,         // ID du log IMPORT_LOG correspondant
+
+  // Migrations (pour ne pas re-checker a chaque onRecords)
+  rulesConfigMigrated: false,
+  importLogMigrated: false,
 };
 
 // --- Getters ---
@@ -53,6 +57,8 @@ export function getRefCaches() { return state.refCaches; }
 export function getSessionId() { return state.sessionId; }
 export function getLastRollbackData() { return state.lastRollbackData; }
 export function getLastRollbackLogId() { return state.lastRollbackLogId; }
+export function isRulesConfigMigrated() { return state.rulesConfigMigrated; }
+export function isImportLogMigrated() { return state.importLogMigrated; }
 
 // --- Setters ---
 export function setExcelData(data) { state.excelData = data; }
@@ -75,6 +81,8 @@ export function setLastImportResult(result) { state.lastImportResult = result; }
 export function setColumnMetadata(meta) { state.columnMetadata = meta; }
 export function setLastRollbackData(data) { state.lastRollbackData = data; }
 export function setLastRollbackLogId(id) { state.lastRollbackLogId = id; }
+export function setRulesConfigMigrated(v) { state.rulesConfigMigrated = v; }
+export function setImportLogMigrated(v) { state.importLogMigrated = v; }
 export function setRefCache(tableName, cache) { state.refCaches[tableName] = cache; }
 export function getRefCache(tableName) { return state.refCaches[tableName] || null; }
 

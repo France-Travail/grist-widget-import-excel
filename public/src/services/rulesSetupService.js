@@ -3,6 +3,7 @@
 // ============================
 
 import { getCurrentTableId, getCurrentGristData, getGristColumnTypes } from "./gristService.js";
+import { isRulesConfigMigrated, setRulesConfigMigrated } from "./state.js";
 
 /**
  * Verifie la presence de la table RULES_CONFIG.
@@ -97,55 +98,61 @@ async function autoCreateRulesConfig() {
 
 /**
  * Ajoute les colonnes manquantes a RULES_CONFIG (is_key, key_priority, key_mode).
- * Par defaut, la premiere ligne obtient is_key=true (compat ascendante).
+ * Ne s'execute qu'une seule fois par session (flag en memoire).
  */
 async function migrateIsKeyColumn() {
+  // Deja fait cette session, on skip
+  if (isRulesConfigMigrated()) return;
+
   try {
     const data = await grist.docApi.fetchTable("RULES_CONFIG");
 
     const migrationActions = [];
 
-    // Migration is_key
     if (data.is_key === undefined) {
       console.warn("Migration: colonne is_key absente, ajout...");
       migrationActions.push(["AddColumn", "RULES_CONFIG", "is_key", { type: "Bool" }]);
     }
-
-    // Migration key_priority
     if (data.key_priority === undefined) {
       console.warn("Migration: colonne key_priority absente, ajout...");
       migrationActions.push(["AddColumn", "RULES_CONFIG", "key_priority", { type: "Int" }]);
     }
-
-    // Migration key_mode
     if (data.key_mode === undefined) {
       console.warn("Migration: colonne key_mode absente, ajout...");
       migrationActions.push(["AddColumn", "RULES_CONFIG", "key_mode", { type: "Text" }]);
     }
 
-    if (migrationActions.length > 0) {
-      await grist.docApi.applyUserActions(migrationActions);
+    // Pas de colonnes manquantes → table deja a jour
+    if (migrationActions.length === 0) {
+      setRulesConfigMigrated(true);
+      return;
     }
 
-    // Initialiser les valeurs par defaut si necessaire
+    // Ajouter les colonnes manquantes
+    await grist.docApi.applyUserActions(migrationActions);
+
+    // Initialiser les valeurs par defaut
     if (data.id?.length > 0) {
       const updateActions = [];
+      let keyCounter = 0; // Compteur sequentiel pour les priorites
 
       for (let i = 0; i < data.id.length; i++) {
         const updates = {};
 
-        // is_key : premiere colonne par defaut si pas encore set
         if (data.is_key === undefined) {
           updates.is_key = i === 0;
         }
 
-        // key_priority : 1 pour les cles, 0 sinon
         if (data.key_priority === undefined) {
           const isKey = data.is_key?.[i] || (i === 0);
-          updates.key_priority = isKey ? (i + 1) : 0;
+          if (isKey) {
+            keyCounter++;
+            updates.key_priority = keyCounter;
+          } else {
+            updates.key_priority = 0;
+          }
         }
 
-        // key_mode : "composite" par defaut
         if (data.key_mode === undefined) {
           updates.key_mode = "composite";
         }
@@ -160,6 +167,8 @@ async function migrateIsKeyColumn() {
         console.log("Migration RULES_CONFIG terminee (is_key, key_priority, key_mode).");
       }
     }
+
+    setRulesConfigMigrated(true);
   } catch (err) {
     console.warn("Migration RULES_CONFIG impossible:", err);
   }
