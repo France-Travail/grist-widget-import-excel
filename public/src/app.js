@@ -50,16 +50,10 @@ function setMode(mode) {
 function openAdminPanel() {
   setAdminPanelOpen(true);
   setMode("admin");
-  // Afficher l'overlay info
-  const overlay = document.getElementById("admin-overlay");
-  if (overlay) overlay.style.display = "flex";
 }
 
 function closeAdminPanel() {
   setAdminPanelOpen(false);
-  // Masquer l'overlay au cas ou
-  const overlay = document.getElementById("admin-overlay");
-  if (overlay) overlay.style.display = "none";
   setMode(urlMode === "dev" ? "dev" : "public");
 }
 
@@ -101,12 +95,6 @@ if (modeSelector) {
 // Listener dropdown mode (mode dev uniquement)
 document.getElementById("mode-selector")?.addEventListener("change", (e) => {
   setMode(e.target.value);
-});
-
-// Bouton fermer overlay info (garde le mode admin actif)
-document.getElementById("admin-close-btn")?.addEventListener("click", () => {
-  const overlay = document.getElementById("admin-overlay");
-  if (overlay) overlay.style.display = "none";
 });
 
 // Bouton retour a l'import (quitte le mode admin)
@@ -330,13 +318,13 @@ function showRollbackButton() {
 document.getElementById("rollback-btn")?.addEventListener("click", async () => {
   const status = document.getElementById("import-status");
 
-  if (!confirm("Etes-vous sur de vouloir annuler le dernier import ? Cette action est irreversible.")) {
+  if (!confirm("Etes-vous sur de vouloir annuler le dernier import de cette session ? Cette action est irreversible.")) {
     return;
   }
 
   const lastImport = await getLastImportForRollback();
   if (!lastImport || !lastImport.rollbackData) {
-    alert("Aucun import annulable trouve.");
+    alert("Aucun import annulable trouve pour cette session.");
     return;
   }
 
@@ -345,7 +333,12 @@ document.getElementById("rollback-btn")?.addEventListener("click", async () => {
 
   try {
     const result = await rollbackImport(lastImport.rollbackData);
-    status.innerHTML = `<p style="color:#10b981"><strong>${result.message}</strong></p>`;
+    let html = `<p style="color:#10b981"><strong>${result.message}</strong></p>`;
+    if (result.warnings?.length > 0) {
+      html += `<details><summary style="color:#f59e0b;cursor:pointer">${result.warnings.length} avertissement(s)</summary>
+        <ul style="font-size:0.85em;color:#92400e">${result.warnings.map(w => `<li>${w}</li>`).join("")}</ul></details>`;
+    }
+    status.innerHTML = html;
     document.getElementById("rollback-btn").style.display = "none";
   } catch (err) {
     console.error("Erreur rollback:", err);

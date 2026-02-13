@@ -89,25 +89,37 @@
         ← Retour a l'import
       </button>
 
-      <!-- Etape 3 : Regles de correspondance (admin/dev, aussi dans l'overlay admin) -->
+      <!-- Bandeau explicatif admin (visible uniquement en mode admin) -->
+      <section class="card admin-info-banner" data-mode="admin">
+        <p><strong>Configuration de l'import</strong> — Les modifications sont enregistrees automatiquement. Definissez les regles de correspondance et les cles de deduplication ci-dessous, puis revenez a l'import.</p>
+      </section>
+
+      <!-- Etape 3 : Regles de correspondance (admin/dev) -->
       <section class="card" data-mode="admin dev">
         <div class="card-header">
           <h2>3. Configuration des regles d'import</h2>
-          <p>Definissez le comportement pour chaque champ lors de l'import</p>
+          <p>Definissez le comportement pour chaque champ lors de l'import. Les modifications sont enregistrees instantanement.</p>
         </div>
         <div id="grist-rules-table" class="rules-grid"></div>
-        <button id="save-rules-btn" class="btn btn-primary">
-          Sauvegarder les regles
-        </button>
       </section>
 
-      <!-- Etape 4 : Cle de doublon composite (admin/dev) -->
+      <!-- Etape 4 : Cle de doublon composite/fallback (admin/dev) -->
       <section class="card" data-mode="admin dev">
         <div class="card-header">
           <h2>4. Cle(s) unique(s) pour les doublons</h2>
-          <p>Cochez une ou plusieurs colonnes pour former la cle d'identification des doublons</p>
+          <p>Cochez une ou plusieurs colonnes pour identifier les doublons</p>
         </div>
         <div class="form-group">
+          <div class="key-mode-selector">
+            <label class="key-mode-label">
+              <input type="radio" name="key-mode" value="composite" id="key-mode-composite" checked />
+              <span><strong>Composite</strong> - Toutes les cles combinees forment un identifiant unique</span>
+            </label>
+            <label class="key-mode-label">
+              <input type="radio" name="key-mode" value="fallback" id="key-mode-fallback" />
+              <span><strong>Fallback</strong> - Si la cle 1 est vide, utilise la cle 2, etc. (ordre de priorite)</span>
+            </label>
+          </div>
           <div id="unique-key-checkboxes" class="unique-key-checkboxes"></div>
         </div>
       </section>
@@ -147,21 +159,6 @@
 
         <div id="import-status" class="import-status"></div>
       </section>
-    </div>
-
-    <!-- Overlay Admin (ouvert via l'engrenage Grist onEditOptions) -->
-    <div id="admin-overlay" class="admin-overlay" style="display:none">
-      <div class="admin-panel">
-        <div class="admin-panel-header">
-          <h2>Configuration du widget</h2>
-          <button id="admin-close-btn" class="btn-close" title="Fermer">&times;</button>
-        </div>
-        <div class="admin-panel-body">
-          <p class="admin-hint">Ces parametres sont accessibles uniquement via l'engrenage du widget (editeurs du document).</p>
-          <!-- Le contenu admin est dans les sections data-mode="admin" au-dessus -->
-          <p>Utilisez les sections "Configuration des regles" et "Cle unique" ci-dessous pour configurer l'import.</p>
-        </div>
-      </div>
     </div>
 
     <!-- Scripts -->

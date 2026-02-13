@@ -62,7 +62,9 @@ async function autoCreateRulesConfig() {
       ["AddTable", "RULES_CONFIG", [
         { id: "col_name", type: "Text" },
         { id: "is_key", type: "Bool" },
+        { id: "key_priority", type: "Int" },
         { id: "rule", type: "Text" },
+        { id: "key_mode", type: "Text" },
       ]],
     ];
 
@@ -72,7 +74,9 @@ async function autoCreateRulesConfig() {
         "AddRecord", "RULES_CONFIG", null, {
           col_name: col,
           is_key: i === 0, // Premiere colonne = cle unique par defaut
+          key_priority: i === 0 ? 1 : 0,
           rule: "ignore",
+          key_mode: "composite", // "composite" ou "fallback"
         },
       ]);
     });
@@ -92,31 +96,72 @@ async function autoCreateRulesConfig() {
 }
 
 /**
- * Ajoute la colonne is_key a RULES_CONFIG si elle n'existe pas.
+ * Ajoute les colonnes manquantes a RULES_CONFIG (is_key, key_priority, key_mode).
  * Par defaut, la premiere ligne obtient is_key=true (compat ascendante).
  */
 async function migrateIsKeyColumn() {
   try {
     const data = await grist.docApi.fetchTable("RULES_CONFIG");
 
-    // Si is_key existe deja, rien a faire
-    if (data.is_key !== undefined) return;
+    const migrationActions = [];
 
-    console.warn("Migration: colonne is_key absente dans RULES_CONFIG, ajout automatique...");
+    // Migration is_key
+    if (data.is_key === undefined) {
+      console.warn("Migration: colonne is_key absente, ajout...");
+      migrationActions.push(["AddColumn", "RULES_CONFIG", "is_key", { type: "Bool" }]);
+    }
 
-    await grist.docApi.applyUserActions([
-      ["AddColumn", "RULES_CONFIG", "is_key", { type: "Bool" }],
-    ]);
+    // Migration key_priority
+    if (data.key_priority === undefined) {
+      console.warn("Migration: colonne key_priority absente, ajout...");
+      migrationActions.push(["AddColumn", "RULES_CONFIG", "key_priority", { type: "Int" }]);
+    }
 
+    // Migration key_mode
+    if (data.key_mode === undefined) {
+      console.warn("Migration: colonne key_mode absente, ajout...");
+      migrationActions.push(["AddColumn", "RULES_CONFIG", "key_mode", { type: "Text" }]);
+    }
+
+    if (migrationActions.length > 0) {
+      await grist.docApi.applyUserActions(migrationActions);
+    }
+
+    // Initialiser les valeurs par defaut si necessaire
     if (data.id?.length > 0) {
-      const actions = data.id.map((rowId, i) => [
-        "UpdateRecord", "RULES_CONFIG", rowId, { is_key: i === 0 },
-      ]);
-      await grist.docApi.applyUserActions(actions);
-      console.log("Migration: is_key ajoute, premiere colonne definie comme cle unique.");
+      const updateActions = [];
+
+      for (let i = 0; i < data.id.length; i++) {
+        const updates = {};
+
+        // is_key : premiere colonne par defaut si pas encore set
+        if (data.is_key === undefined) {
+          updates.is_key = i === 0;
+        }
+
+        // key_priority : 1 pour les cles, 0 sinon
+        if (data.key_priority === undefined) {
+          const isKey = data.is_key?.[i] || (i === 0);
+          updates.key_priority = isKey ? (i + 1) : 0;
+        }
+
+        // key_mode : "composite" par defaut
+        if (data.key_mode === undefined) {
+          updates.key_mode = "composite";
+        }
+
+        if (Object.keys(updates).length > 0) {
+          updateActions.push(["UpdateRecord", "RULES_CONFIG", data.id[i], updates]);
+        }
+      }
+
+      if (updateActions.length > 0) {
+        await grist.docApi.applyUserActions(updateActions);
+        console.log("Migration RULES_CONFIG terminee (is_key, key_priority, key_mode).");
+      }
     }
   } catch (err) {
-    console.warn("Migration is_key impossible (peut-etre deja presente):", err);
+    console.warn("Migration RULES_CONFIG impossible:", err);
   }
 }
 
@@ -228,8 +273,8 @@ async function generateRulesTemplate() {
       return;
     }
 
-    const data = [["col_name", "is_key", "rule"]];
-    cols.forEach((col, i) => data.push([col, i === 0 ? true : false, "ignore"]));
+    const data = [["col_name", "is_key", "key_priority", "rule", "key_mode"]];
+    cols.forEach((col, i) => data.push([col, i === 0 ? true : false, i === 0 ? 1 : 0, "ignore", "composite"]));
 
     if (typeof XLSX === "undefined") {
       alert("Le module XLSX n'est pas charge.");

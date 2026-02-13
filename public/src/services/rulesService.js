@@ -6,15 +6,16 @@ import { normalizeName, cleanLabel } from "./utils.js";
 
 /**
  * Recupere les regles depuis RULES_CONFIG.
- * Supporte la cle composite (plusieurs is_key=true).
+ * Supporte la cle composite (plusieurs is_key=true) et le mode fallback.
  *
- * @returns {Promise<{rules: Object, uniqueKeys: string[], uniqueKey: string|null}>}
+ * @returns {Promise<{rules: Object, uniqueKeys: string[], uniqueKey: string|null, keyMode: string}>}
  */
 export async function fetchImportRules(tableName = "RULES_CONFIG") {
   try {
     const result = await grist.docApi.fetchTable(tableName);
     const rules = {};
-    const uniqueKeys = [];
+    const uniqueKeysWithPriority = [];
+    let keyMode = "composite"; // Par defaut
 
     const nbRows = result.col_name?.length || 0;
 
@@ -22,6 +23,7 @@ export async function fetchImportRules(tableName = "RULES_CONFIG") {
       const rawColName = result.col_name[i];
       const rule = result.rule[i];
       const isKey = result.is_key?.[i];
+      const priority = result.key_priority?.[i] || 0;
 
       if (!rawColName || !rule) continue;
 
@@ -29,7 +31,12 @@ export async function fetchImportRules(tableName = "RULES_CONFIG") {
       const clean = cleanLabel(rawColName);
 
       if (isKey) {
-        uniqueKeys.push(normalized);
+        uniqueKeysWithPriority.push({ norm: normalized, priority });
+      }
+
+      // Lire le key_mode depuis n'importe quelle ligne (c'est global)
+      if (result.key_mode?.[i] && result.key_mode[i] !== "") {
+        keyMode = result.key_mode[i];
       }
 
       rules[normalized] = {
@@ -39,17 +46,21 @@ export async function fetchImportRules(tableName = "RULES_CONFIG") {
       };
     }
 
+    // Trier par priorite (1 = plus haute priorite)
+    uniqueKeysWithPriority.sort((a, b) => (a.priority || 999) - (b.priority || 999));
+    const uniqueKeys = uniqueKeysWithPriority.map(k => k.norm);
+
     if (uniqueKeys.length === 0) {
       console.warn("Aucune cle unique definie dans RULES_CONFIG !");
     }
 
-    // Compatibilite ascendante : uniqueKey = premiere cle ou null
+    // Compatibilite ascendante
     const uniqueKey = uniqueKeys.length > 0 ? uniqueKeys[0] : null;
 
-    return { rules, uniqueKeys, uniqueKey };
+    return { rules, uniqueKeys, uniqueKey, keyMode };
   } catch (e) {
     console.error("Erreur lors du chargement des regles :", e);
-    return { rules: {}, uniqueKeys: [], uniqueKey: null };
+    return { rules: {}, uniqueKeys: [], uniqueKey: null, keyMode: "composite" };
   }
 }
 

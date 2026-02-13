@@ -167,7 +167,7 @@ export function populateColumnList(headers) {
 // Selecteur cle(s) unique(s) composite
 // =========================
 export async function populateUniqueKeySelector(columnNames) {
-  const { uniqueKeys } = await fetchImportRules();
+  const { uniqueKeys, keyMode } = await fetchImportRules();
   const container = document.getElementById("unique-key-checkboxes");
   if (!container) return;
   container.innerHTML = "";
@@ -175,9 +175,42 @@ export async function populateUniqueKeySelector(columnNames) {
   const formulaCols = getFormulaColumns();
   const normalizedUniqueKeys = (uniqueKeys || []).map(k => normalizeName(k));
 
-  columnNames.forEach((col) => {
+  // Initialiser le radio key-mode
+  const compositeRadio = document.getElementById("key-mode-composite");
+  const fallbackRadio = document.getElementById("key-mode-fallback");
+  if (compositeRadio && fallbackRadio) {
+    if (keyMode === "fallback") {
+      fallbackRadio.checked = true;
+    } else {
+      compositeRadio.checked = true;
+    }
+
+    const onModeChange = async (e) => {
+      const newMode = e.target.value;
+      try {
+        const tableData = await grist.docApi.fetchTable("RULES_CONFIG");
+        const actions = tableData.id.map((rowId) => [
+          "UpdateRecord", "RULES_CONFIG", rowId, { key_mode: newMode },
+        ]);
+        await grist.docApi.applyUserActions(actions);
+        console.log("Mode cle mis a jour:", newMode);
+        // Reconstruire l'UI pour afficher/masquer les priorites
+        populateUniqueKeySelector(columnNames);
+      } catch (err) {
+        console.error("Erreur mise a jour key_mode:", err);
+      }
+    };
+
+    compositeRadio.addEventListener("change", onModeChange);
+    fallbackRadio.addEventListener("change", onModeChange);
+  }
+
+  const isFallback = keyMode === "fallback";
+
+  columnNames.forEach((col, colIndex) => {
     const normCol = normalizeName(col);
     const isFormula = formulaCols.has(col);
+    const isChecked = normalizedUniqueKeys.includes(normCol);
 
     const label = document.createElement("label");
     label.className = "unique-key-checkbox-label" + (isFormula ? " formula-col" : "");
@@ -187,7 +220,7 @@ export async function populateUniqueKeySelector(columnNames) {
     checkbox.className = "unique-key-checkbox";
     checkbox.value = normCol;
     checkbox.dataset.original = col;
-    checkbox.checked = normalizedUniqueKeys.includes(normCol);
+    checkbox.checked = isChecked;
     if (isFormula) checkbox.disabled = true;
 
     const span = document.createElement("span");
@@ -195,6 +228,17 @@ export async function populateUniqueKeySelector(columnNames) {
 
     label.appendChild(checkbox);
     label.appendChild(span);
+
+    // En mode fallback, afficher le numero de priorite
+    if (isFallback && isChecked) {
+      const priorityIdx = normalizedUniqueKeys.indexOf(normCol);
+      const badge = document.createElement("span");
+      badge.className = "key-priority-badge";
+      badge.textContent = `#${priorityIdx + 1}`;
+      badge.title = `Priorite ${priorityIdx + 1} (fallback)`;
+      label.appendChild(badge);
+    }
+
     container.appendChild(label);
 
     checkbox.addEventListener("change", async () => {
@@ -202,14 +246,23 @@ export async function populateUniqueKeySelector(columnNames) {
         .map(cb => cb.value);
       try {
         const tableData = await grist.docApi.fetchTable("RULES_CONFIG");
-        const actions = tableData.col_name.map((ruleCol, i) => [
-          "UpdateRecord",
-          "RULES_CONFIG",
-          tableData.id[i],
-          { is_key: checked.includes(normalizeName(ruleCol)) },
-        ]);
+        const actions = tableData.col_name.map((ruleCol, idx) => {
+          const isKey = checked.includes(normalizeName(ruleCol));
+          // En mode fallback, assigner la priorite selon l'ordre de selection
+          const priority = isKey ? (checked.indexOf(normalizeName(ruleCol)) + 1) : 0;
+          return [
+            "UpdateRecord",
+            "RULES_CONFIG",
+            tableData.id[idx],
+            { is_key: isKey, key_priority: priority },
+          ];
+        });
         await grist.docApi.applyUserActions(actions);
         console.log("Cle(s) unique(s) mise(s) a jour :", checked);
+        // Reconstruire l'UI pour mettre a jour les badges de priorite
+        if (isFallback) {
+          populateUniqueKeySelector(columnNames);
+        }
       } catch (err) {
         console.error("Erreur lors de la mise a jour des cles uniques:", err);
       }
@@ -323,13 +376,24 @@ export function showImportResult({ resume, stats, dryRun, sheetName }) {
   const prefix = dryRun ? "[SIMULATION] " : "";
   const color = dryRun ? "#f59e0b" : "#10b981";
   const hasErrors = stats.errors && stats.errors > 0;
+  const emptyRows = stats.emptyRows || 0;
+  const noKeyRows = stats.noKeyRows || 0;
+
+  let extraStats = "";
+  if (noKeyRows > 0) {
+    extraStats += `<span class="stat-nokey">${noKeyRows} sans cle</span>`;
+  }
+  if (emptyRows > 0) {
+    extraStats += `<span class="stat-empty">${emptyRows} ligne(s) vide(s)</span>`;
+  }
 
   status.innerHTML = `
     <p style="color:${hasErrors ? '#ef4444' : color}"><strong>${prefix}Import termine${sheetName ? ` (onglet: ${sheetName})` : ""}.</strong></p>
     <div class="import-stats">
       <span class="stat-added">${stats.added} ajoutee(s)</span>
       <span class="stat-updated">${stats.updated} mise(s) a jour</span>
-      <span class="stat-skipped">${stats.skipped} ignoree(s)</span>
+      ${stats.skipped > 0 ? `<span class="stat-skipped">${stats.skipped} ignoree(s)</span>` : ""}
+      ${extraStats}
       ${hasErrors ? `<span class="stat-errors">${stats.errors} erreur(s)</span>` : ""}
     </div>
     <details>

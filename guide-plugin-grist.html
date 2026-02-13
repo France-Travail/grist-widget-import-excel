@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guide Plugin Grist - Import Excel</title>
+    <style>
+        :root {
+            --color-primary: #21808d;
+            --color-primary-hover: #1d7480;
+            --color-bg: #fcfcf9;
+            --color-surface: #fffffe;
+            --color-text: #134252;
+            --color-text-secondary: #626c71;
+            --color-border: rgba(94, 82, 64, 0.2);
+            --color-success: #21808d;
+            --color-step: #32b8c6;
+            --color-warning: #e8a825;
+            --color-danger: #d9534f;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --color-bg: #1f2121;
+                --color-surface: #262828;
+                --color-text: #f5f5f5;
+                --color-text-secondary: rgba(167, 169, 169, 0.7);
+                --color-border: rgba(119, 124, 124, 0.3);
+                --color-primary: #32b8c6;
+                --color-primary-hover: #2da6b2;
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .header p {
+            font-size: 18px;
+            opacity: 0.95;
+        }
+
+        .nav {
+            background: var(--color-surface);
+            border-bottom: 1px solid var(--color-border);
+            padding: 15px 40px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .nav button {
+            background: transparent;
+            border: 1px solid var(--color-border);
+            color: var(--color-text);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .nav button:hover {
+            background: var(--color-primary);
+            color: white;
+            border-color: var(--color-primary);
+        }
+
+        .nav button.active {
+            background: var(--color-primary);
+            color: white;
+            border-color: var(--color-primary);
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        h2 {
+            color: var(--color-primary);
+            margin-bottom: 20px;
+            font-size: 26px;
+            font-weight: 600;
+        }
+
+        h3 {
+            color: var(--color-text);
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .step {
+            background: var(--color-bg);
+            border-left: 4px solid var(--color-step);
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .step-number {
+            display: inline-block;
+            background: var(--color-step);
+            color: white;
+            width: 32px;
+            height: 32px;
+            line-height: 32px;
+            text-align: center;
+            border-radius: 50%;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+
+        .step-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--color-text);
+        }
+
+        .step-content {
+            margin-left: 42px;
+        }
+
+        .step-list {
+            list-style: none;
+            margin-top: 10px;
+        }
+
+        .step-list li {
+            padding: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .step-list li:before {
+            content: '\2192';
+            position: absolute;
+            left: 0;
+            color: var(--color-primary);
+            font-weight: bold;
+        }
+
+        .code-block {
+            background: rgba(33, 128, 141, 0.1);
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+
+        .alert {
+            background: rgba(50, 184, 198, 0.1);
+            border-left: 4px solid var(--color-primary);
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 6px 6px 0;
+        }
+
+        .alert strong {
+            color: var(--color-primary);
+        }
+
+        .alert-warning {
+            background: rgba(232, 168, 37, 0.1);
+            border-left-color: var(--color-warning);
+        }
+
+        .alert-warning strong {
+            color: var(--color-warning);
+        }
+
+        .rule-item {
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+
+        .rule-title {
+            font-weight: 600;
+            color: var(--color-primary);
+            margin-bottom: 5px;
+        }
+
+        .rule-description {
+            color: var(--color-text-secondary);
+            font-size: 14px;
+        }
+
+        .progress-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin: 30px 0;
+            padding: 0 20px;
+        }
+
+        .progress-step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+            padding: 10px;
+        }
+
+        .progress-step:not(:last-child):after {
+            content: '';
+            position: absolute;
+            top: 20px;
+            right: -50%;
+            width: 100%;
+            height: 2px;
+            background: var(--color-border);
+            z-index: -1;
+        }
+
+        .progress-dot {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--color-border);
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--color-text);
+            transition: all 0.3s;
+        }
+
+        .progress-step.completed .progress-dot {
+            background: var(--color-success);
+            color: white;
+        }
+
+        .footer {
+            background: var(--color-bg);
+            padding: 20px 40px;
+            text-align: center;
+            border-top: 1px solid var(--color-border);
+            color: var(--color-text-secondary);
+            font-size: 14px;
+        }
+
+        .download-link {
+            display: inline-block;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            color: var(--color-primary);
+            padding: 12px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .download-link:hover {
+            background: var(--color-primary);
+            color: white;
+            border-color: var(--color-primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(33, 128, 141, 0.2);
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .feature-card {
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .feature-card .feature-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .feature-card .feature-name {
+            font-weight: 600;
+            color: var(--color-text);
+            margin-bottom: 4px;
+        }
+
+        .feature-card .feature-desc {
+            font-size: 13px;
+            color: var(--color-text-secondary);
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--color-primary);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+
+        .badge-new {
+            background: #e8a825;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Guide Plugin Grist</h1>
+            <p>Import de donnees Excel / CSV vers Grist</p>
+        </div>
+
+        <div class="nav">
+            <button class="active" onclick="showSection('overview')">Vue d'ensemble</button>
+            <button onclick="showSection('installation')">Installation</button>
+            <button onclick="showSection('configuration')">Configuration</button>
+            <button onclick="showSection('rules')">Regles d'import</button>
+            <button onclick="showSection('utilisation')">Utilisation</button>
+        </div>
+
+        <div class="content">
+            <!-- Section Vue d'ensemble -->
+            <div id="overview" class="section active">
+                <h2>Vue d'ensemble</h2>
+
+                <p>Ce guide detaille la procedure d'installation, de configuration et d'utilisation du plugin d'import Excel/CSV pour Grist. Le plugin permet d'importer automatiquement des donnees depuis des fichiers Excel ou CSV vers vos tables Grist avec des regles personnalisees et une gestion intelligente des doublons.</p>
+
+                <div class="progress-indicator">
+                    <div class="progress-step completed">
+                        <div class="progress-dot">1</div>
+                        <div>Installation</div>
+                    </div>
+                    <div class="progress-step completed">
+                        <div class="progress-dot">2</div>
+                        <div>Configuration</div>
+                    </div>
+                    <div class="progress-step completed">
+                        <div class="progress-dot">3</div>
+                        <div>Regles</div>
+                    </div>
+                    <div class="progress-step completed">
+                        <div class="progress-dot">4</div>
+                        <div>Utilisation</div>
+                    </div>
+                </div>
+
+                <h3>Fonctionnalites</h3>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128196;</div>
+                        <div class="feature-name">Multi-format</div>
+                        <div class="feature-desc">Import de fichiers .xlsx, .xls et .csv</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128203;</div>
+                        <div class="feature-name">Multi-onglets <span class="badge badge-new">Nouveau</span></div>
+                        <div class="feature-desc">Selection et import de plusieurs onglets Excel en une seule operation</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128260;</div>
+                        <div class="feature-name">Mapping automatique</div>
+                        <div class="feature-desc">Correspondance automatique des colonnes Excel vers Grist</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#9881;</div>
+                        <div class="feature-name">5 regles d'import</div>
+                        <div class="feature-desc">Comportement configurable pour chaque colonne</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128273;</div>
+                        <div class="feature-name">Cles composites <span class="badge badge-new">Nouveau</span></div>
+                        <div class="feature-desc">Cle unique multi-colonnes avec mode composite ou fallback</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128269;</div>
+                        <div class="feature-name">Simulation <span class="badge badge-new">Nouveau</span></div>
+                        <div class="feature-desc">Dry-run pour tester l'import sans modifier les donnees</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#8617;</div>
+                        <div class="feature-name">Rollback <span class="badge badge-new">Nouveau</span></div>
+                        <div class="feature-desc">Annulation du dernier import avec restauration des donnees</div>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">&#128200;</div>
+                        <div class="feature-name">Historique <span class="badge badge-new">Nouveau</span></div>
+                        <div class="feature-desc">Table IMPORT_LOG avec historique complet des imports</div>
+                    </div>
+                </div>
+
+                <h3>Prerequis</h3>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li>Droits d'administration sur le document Grist (pour la configuration)</li>
+                    <li>Une table cible ou importer les donnees</li>
+                    <li>Fichiers a importer : <strong>.xlsx</strong>, <strong>.xls</strong> ou <strong>.csv</strong></li>
+                </ul>
+
+                <div class="alert">
+                    <strong>URL du plugin :</strong> https://france-travail.github.io/grist-widget-import-excel/
+                </div>
+
+                <h3>Telecharger les guides</h3>
+                <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+                    <a href="https://poleemploi.sharepoint.com/:b:/r/teams/NAT-SIPlateforme-AllianceData/Documents%20partages/%F0%9F%94%84%20Exploration%20Trajectoire/01.%20Transverse/04.%20Grist/Grist/guide%20plugin%20grist%20Admin.pdf?csf=1&web=1&e=6ebf09"
+                       class="download-link"
+                       target="_blank"
+                       rel="noopener noreferrer">
+                        &#128196; Telecharger le mode operatoire administrateur (PDF)
+                    </a>
+                    <a href="https://poleemploi.sharepoint.com/teams/NAT-SIPlateforme-AllianceData/Documents%20partages/🔄%20Exploration%20Trajectoire/01.%20Transverse/04.%20Grist/Grist/guide%20plugin%20grist%20User.pdf?CT=1763549746367&OR=ItemsView"
+                       class="download-link"
+                       target="_blank"
+                       rel="noopener noreferrer">
+                        &#128196; Telecharger le mode d'emploi utilisateur (PDF)
+                    </a>
+                </div>
+            </div>
+
+            <!-- Section Installation -->
+            <div id="installation" class="section">
+                <h2>Installation du Plugin</h2>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">1</span>
+                        Ajouter une vue personnalisee
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Cliquer sur <strong>Nouveau</strong></li>
+                            <li>Selectionner <strong>Ajouter une page ou une vue</strong></li>
+                            <li>Choisir <strong>Vue personnalisee</strong></li>
+                            <li>Selectionner la table qui devra etre mise a jour</li>
+                            <li>Cliquer sur <strong>Ajouter</strong></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">2</span>
+                        Configurer l'URL du widget
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Entrer l'URL du plugin dans le champ prevu</li>
+                            <li>Cliquer sur <strong>Ajouter un widget</strong></li>
+                        </ul>
+                        <div class="code-block">
+                            https://france-travail.github.io/grist-widget-import-excel/
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">3</span>
+                        Autoriser l'acces
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Cocher la case d'autorisation d'acces</li>
+                            <li>Cliquer sur <strong>Confirmer</strong></li>
+                        </ul>
+                        <div class="alert">
+                            <strong>Important :</strong> Le plugin necessite l'acces complet au document pour fonctionner correctement (lecture et ecriture des donnees).
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section Configuration -->
+            <div id="configuration" class="section">
+                <h2>Configuration</h2>
+
+                <p>Le plugin a besoin d'une table <strong>RULES_CONFIG</strong> pour stocker les regles d'import. Deux methodes sont disponibles :</p>
+
+                <h3>Methode 1 : Creation automatique <span class="badge badge-new">Nouveau</span></h3>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">A</span>
+                        Laisser le plugin creer la table automatiquement
+                    </div>
+                    <div class="step-content">
+                        <p>Si la table RULES_CONFIG n'existe pas, le plugin peut la creer automatiquement :</p>
+                        <ul class="step-list">
+                            <li>Le plugin detecte l'absence de la table RULES_CONFIG</li>
+                            <li>Il genere automatiquement la table avec toutes les colonnes necessaires</li>
+                            <li>La premiere colonne de votre table est definie comme cle unique par defaut</li>
+                            <li>Il ne reste plus qu'a configurer les regles via le mode administration</li>
+                        </ul>
+                        <div class="alert">
+                            <strong>Recommande :</strong> Cette methode est la plus simple et evite les etapes manuelles de telechargement/import du template.
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Methode 2 : Template manuel</h3>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">4</span>
+                        Telecharger le modele de configuration
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Verifier que toutes les colonnes a utiliser sont visibles dans la table</li>
+                            <li>Cliquer sur <strong>Telecharger le modele RULES_CONFIG</strong></li>
+                            <li>Cliquer sur <strong>OK</strong> pour confirmer le telechargement</li>
+                        </ul>
+                        <div class="alert">
+                            Le fichier <strong>RULES_CONFIG.xlsx</strong> sera telecharge automatiquement.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">5</span>
+                        Importer le fichier de configuration
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Cliquer sur <strong>Nouveau</strong> puis <strong>Importer un fichier</strong></li>
+                            <li>Selectionner le fichier <strong>RULES_CONFIG.xlsx</strong></li>
+                            <li>Importer dans une <strong>Nouvelle table</strong></li>
+                            <li>Cliquer sur <strong>Importer</strong></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">6</span>
+                        Nettoyer la vue
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Cliquer sur les <strong>3 points</strong> de la page RULES_CONFIG creee</li>
+                            <li>Choisir <strong>Supprimer</strong></li>
+                            <li>Cocher <strong>Conserver les donnees</strong></li>
+                            <li>Confirmer la suppression</li>
+                        </ul>
+                        <div class="alert alert-warning">
+                            <strong>Important :</strong> Supprimer uniquement la page et la vue, pas la table de configuration. Cochez bien "Conserver les donnees".
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Acceder au mode administration</h3>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">7</span>
+                        Ouvrir la configuration via l'engrenage Grist
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Retourner sur la page du plugin</li>
+                            <li>Dans le panneau lateral droit, cliquer sur l'<strong>icone engrenage</strong> du widget</li>
+                            <li>Le mode administration s'ouvre avec les sections de configuration</li>
+                        </ul>
+                        <div class="alert">
+                            <strong>Note :</strong> L'acces au mode administration se fait via l'engrenage du widget dans le panneau lateral de Grist. Seuls les editeurs du document peuvent y acceder.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section Regles -->
+            <div id="rules" class="section">
+                <h2>Regles d'Import</h2>
+
+                <p>Configurez le comportement d'import pour chaque colonne de votre table. Pour chaque champ, choisissez l'action a effectuer lors de l'import :</p>
+
+                <div class="rule-item">
+                    <div class="rule-title">Ne jamais modifier</div>
+                    <div class="rule-description">
+                        La valeur Grist est toujours conservee, meme si differente d'Excel.
+                        <br><strong>Usage :</strong> Champs calcules ou valides manuellement
+                    </div>
+                </div>
+
+                <div class="rule-item">
+                    <div class="rule-title">Ecraser systematiquement</div>
+                    <div class="rule-description">
+                        La valeur Excel remplace celle de Grist a chaque import.
+                        <br><strong>Usage :</strong> Donnees de reference provenant d'Excel
+                    </div>
+                </div>
+
+                <div class="rule-item">
+                    <div class="rule-title">Mettre a jour si plus recent</div>
+                    <div class="rule-description">
+                        La valeur Excel remplace celle de Grist uniquement si elle est plus recente.
+                        <br><strong>Usage :</strong> Champs de type Date (horodatages, dates de modification)
+                    </div>
+                </div>
+
+                <div class="rule-item">
+                    <div class="rule-title">Remplir uniquement si vide</div>
+                    <div class="rule-description">
+                        La valeur Excel est utilisee uniquement si la cellule Grist est vide.
+                        <br><strong>Usage :</strong> Valeurs par defaut, completion automatique
+                    </div>
+                </div>
+
+                <div class="rule-item">
+                    <div class="rule-title">Ajouter si different</div>
+                    <div class="rule-description">
+                        La valeur Excel est ajoutee a la suite si elle est differente de celle de Grist.
+                        <br><strong>Usage :</strong> Champs de type Choix/Liste (commentaires, historique, tags multiples)
+                    </div>
+                </div>
+
+                <div class="alert">
+                    <strong>Colonnes formule :</strong> Les colonnes calculees (formules Grist) sont automatiquement detectees et exclues de l'import. Elles apparaissent avec la mention "(formule)" et leur selecteur est desactive.
+                </div>
+
+                <h3>Cle(s) unique(s) pour les doublons</h3>
+
+                <p>Apres avoir configure les regles, definissez la ou les colonnes servant de cle unique pour identifier les doublons lors de l'import.</p>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">8</span>
+                        Configurer les cles uniques
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Les modifications de regles sont enregistrees <strong>instantanement</strong> (pas de bouton de sauvegarde)</li>
+                            <li>Cocher une ou plusieurs colonnes comme cle unique</li>
+                            <li>Choisir le mode de cle :</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="rule-item">
+                    <div class="rule-title">Mode Composite <span class="badge badge-new">Nouveau</span></div>
+                    <div class="rule-description">
+                        Toutes les cles cochees sont <strong>combinees</strong> pour former un identifiant unique.
+                        <br><strong>Exemple :</strong> Si "Nom" + "Prenom" sont cles composites, la combinaison "Dupont + Jean" identifie une ligne unique.
+                    </div>
+                </div>
+
+                <div class="rule-item">
+                    <div class="rule-title">Mode Fallback <span class="badge badge-new">Nouveau</span></div>
+                    <div class="rule-description">
+                        Les cles sont utilisees par <strong>ordre de priorite</strong>. Si la cle 1 est vide, le plugin utilise la cle 2, etc.
+                        <br><strong>Exemple :</strong> Cle 1 = "Email", Cle 2 = "Telephone". Si l'email est vide, le telephone est utilise pour identifier la ligne.
+                    </div>
+                </div>
+
+                <div class="alert">
+                    <strong>Configuration terminee !</strong> Cliquer sur "Retour a l'import" pour quitter le mode administration et commencer a importer des donnees.
+                </div>
+            </div>
+
+            <!-- Section Utilisation -->
+            <div id="utilisation" class="section">
+                <h2>Utilisation (Mode Utilisateur)</h2>
+
+                <p>Une fois la configuration effectuee par l'administrateur, les utilisateurs peuvent importer leurs fichiers Excel ou CSV.</p>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">1</span>
+                        Selectionner un fichier
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Cliquer sur <strong>Choisir un fichier</strong></li>
+                            <li>Formats acceptes : <strong>.xlsx</strong>, <strong>.xls</strong>, <strong>.csv</strong></li>
+                            <li>Le nom du fichier s'affiche sur la bande verte une fois selectionne</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">2</span>
+                        Selectionner les onglets <span class="badge badge-new">Nouveau</span>
+                    </div>
+                    <div class="step-content">
+                        <p>Si le fichier Excel contient plusieurs onglets, un selecteur apparait :</p>
+                        <ul class="step-list">
+                            <li>Tous les onglets sont coches par defaut</li>
+                            <li>Decocher les onglets a ne pas importer</li>
+                            <li>Boutons rapides : <strong>Tout selectionner</strong> / <strong>Tout deselectionner</strong></li>
+                            <li>L'import traitera chaque onglet selectionne de maniere sequentielle</li>
+                        </ul>
+                        <div class="alert">
+                            <strong>Note :</strong> Si le fichier ne contient qu'un seul onglet, cette etape est automatiquement ignoree.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">3</span>
+                        Verifier les correspondances
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Cliquer sur <strong>Faire correspondre les colonnes</strong></li>
+                            <li>Le plugin affiche les correspondances Excel &harr; Grist detectees automatiquement</li>
+                            <li>Les colonnes sans correspondance sont signalees par <strong>"Aucun match"</strong></li>
+                            <li>Un rapport de validation s'affiche avec les eventuels avertissements</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">4</span>
+                        Simuler l'import (optionnel) <span class="badge badge-new">Nouveau</span>
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Cliquer sur <strong>Simuler l'import</strong> pour tester sans modifier les donnees</li>
+                            <li>Le rapport affiche les actions qui seraient effectuees (ajouts, mises a jour, ignorees)</li>
+                            <li>Permet de verifier le resultat avant de lancer l'import reel</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">5</span>
+                        Lancer l'import
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Cliquer sur <strong>Lancer l'import</strong></li>
+                            <li>Une barre de progression s'affiche en temps reel</li>
+                            <li>A la fin, un recapitulatif detaille les lignes ajoutees, mises a jour, ignorees et en erreur</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">6</span>
+                        Annuler le dernier import (optionnel) <span class="badge badge-new">Nouveau</span>
+                    </div>
+                    <div class="step-content">
+                        <ul class="step-list">
+                            <li>Apres un import reussi, le bouton <strong>Annuler le dernier import</strong> apparait</li>
+                            <li>Cliquer dessus et confirmer pour restaurer les donnees a leur etat precedent</li>
+                            <li>Les lignes ajoutees sont supprimees et les lignes modifiees sont restaurees</li>
+                            <li>Le rollback couvre <strong>tous les onglets</strong> d'un meme import</li>
+                        </ul>
+                        <div class="alert alert-warning">
+                            <strong>Attention :</strong> Le rollback n'est disponible que pour le dernier import de la session en cours. Si vous fermez ou rechargez le widget, le rollback n'est plus possible.
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Table IMPORT_LOG</h3>
+                <p>Chaque import (et simulation) est automatiquement enregistre dans une table <strong>IMPORT_LOG</strong> creee automatiquement par le plugin. Elle contient :</p>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li>Horodatage de l'import</li>
+                    <li>Nom du fichier et de l'onglet importe</li>
+                    <li>Statistiques : lignes ajoutees, mises a jour, ignorees, erreurs</li>
+                    <li>Indicateur de simulation (dry-run) ou import reel</li>
+                    <li>Indicateur d'annulation (rolled back)</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            Plugin d'import Excel/CSV pour Grist - Documentation
+        </div>
+    </div>
+
+    <script>
+        function showSection(sectionId) {
+            var sections = document.querySelectorAll('.section');
+            sections.forEach(function(section) { section.classList.remove('active'); });
+
+            var buttons = document.querySelectorAll('.nav button');
+            buttons.forEach(function(button) { button.classList.remove('active'); });
+
+            document.getElementById(sectionId).classList.add('active');
+
+            event.target.classList.add('active');
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

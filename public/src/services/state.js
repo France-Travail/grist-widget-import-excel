@@ -27,6 +27,11 @@ const state = {
   importInProgress: false,
   importProgress: { current: 0, total: 0 },
   lastImportResult: null,
+
+  // Rollback (session-scoped)
+  sessionId: crypto.randomUUID(),  // Unique par onglet/session navigateur
+  lastRollbackData: null,          // Rollback data du dernier import de CETTE session
+  lastRollbackLogId: null,         // ID du log IMPORT_LOG correspondant
 };
 
 // --- Getters ---
@@ -45,6 +50,9 @@ export function getImportProgress() { return state.importProgress; }
 export function getLastImportResult() { return state.lastImportResult; }
 export function getColumnMetadata() { return state.columnMetadata; }
 export function getRefCaches() { return state.refCaches; }
+export function getSessionId() { return state.sessionId; }
+export function getLastRollbackData() { return state.lastRollbackData; }
+export function getLastRollbackLogId() { return state.lastRollbackLogId; }
 
 // --- Setters ---
 export function setExcelData(data) { state.excelData = data; }
@@ -65,6 +73,8 @@ export function setImportProgress(current, total) {
 }
 export function setLastImportResult(result) { state.lastImportResult = result; }
 export function setColumnMetadata(meta) { state.columnMetadata = meta; }
+export function setLastRollbackData(data) { state.lastRollbackData = data; }
+export function setLastRollbackLogId(id) { state.lastRollbackLogId = id; }
 export function setRefCache(tableName, cache) { state.refCaches[tableName] = cache; }
 export function getRefCache(tableName) { return state.refCaches[tableName] || null; }
 
@@ -81,4 +91,6 @@ export function resetImportState() {
   state.importInProgress = false;
   state.importProgress = { current: 0, total: 0 };
   state.lastImportResult = null;
+  state.lastRollbackData = null;
+  state.lastRollbackLogId = null;
 }

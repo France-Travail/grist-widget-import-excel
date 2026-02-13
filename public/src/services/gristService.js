@@ -11,6 +11,7 @@ import {
   setImportInProgress, setImportProgress,
   setColumnMetadata, getColumnMetadata,
   setRefCache, getRefCache,
+  getSessionId, setLastRollbackData, setLastRollbackLogId,
 } from "./state.js";
 
 // =========================
@@ -288,11 +289,12 @@ export async function importToGrist({ excelData, mapping, dryRun = false, onProg
   setImportInProgress(true);
 
   try {
-    // 1) Regles + cles composites
-    const { rules: rawRules, uniqueKeys } = await fetchImportRules();
+    // 1) Regles + cles composites/fallback
+    const { rules: rawRules, uniqueKeys, keyMode } = await fetchImportRules();
     if (!uniqueKeys || uniqueKeys.length === 0) {
       throw new Error("Aucune cle unique definie dans RULES_CONFIG.");
     }
+    console.log(`Mode cles: ${keyMode}, cles: [${uniqueKeys.join(", ")}]`);
 
     // 2) Colonnes Grist
     const gristColTypes = getGristSchema();
@@ -344,17 +346,32 @@ export async function importToGrist({ excelData, mapping, dryRun = false, onProg
     const rows = (excelData || []).slice(1);
     const total = rows.length;
 
-    // 8) Index Grist par cle composite
+    // 8) Index Grist par cle (composite ou fallback)
     const gristData = getGristRecords();
-    const gristIndex = {};
-    for (const rec of gristData) {
-      const keyParts = uniqueKeyGristCols.map(({ gristCol }) => {
-        const val = rec[gristCol];
-        return val === null || val === undefined ? "" : String(val).trim();
-      });
-      const compositeKey = keyParts.join("|||");
-      if (compositeKey && !keyParts.every(p => p === "")) {
-        gristIndex[compositeKey] = rec;
+    const gristIndex = {};         // Pour mode composite
+    const gristFallbackIndexes = {}; // Pour mode fallback: { norm: { val: rec } }
+
+    if (keyMode === "fallback") {
+      // Mode fallback : un index par cle
+      for (const { norm, gristCol } of uniqueKeyGristCols) {
+        gristFallbackIndexes[norm] = {};
+        for (const rec of gristData) {
+          const val = rec[gristCol];
+          const key = val === null || val === undefined ? "" : String(val).trim();
+          if (key) gristFallbackIndexes[norm][key] = rec;
+        }
+      }
+    } else {
+      // Mode composite : une seule cle jointe
+      for (const rec of gristData) {
+        const keyParts = uniqueKeyGristCols.map(({ gristCol }) => {
+          const val = rec[gristCol];
+          return val === null || val === undefined ? "" : String(val).trim();
+        });
+        const compositeKey = keyParts.join("|||");
+        if (compositeKey && !keyParts.every(p => p === "")) {
+          gristIndex[compositeKey] = rec;
+        }
       }
     }
 
@@ -366,11 +383,24 @@ export async function importToGrist({ excelData, mapping, dryRun = false, onProg
       })
     );
 
-    // 10) Traitement ligne par ligne
+    // 10) Detecter les colonnes Grist absentes du mapping Excel
+    const mappedGristCols = new Set(Object.values(mapping || {}).filter(Boolean));
+    const unmappedGristCols = gristCols.filter(c =>
+      c !== "id" && c !== "manualSort" && !formulaCols.has(c) && !mappedGristCols.has(c)
+    );
+
+    // 11) Traitement ligne par ligne
     const actions = [];
     const resume = [];
     const stats = { added: 0, updated: 0, skipped: 0, errors: 0 };
     const rollbackData = { added: [], updated: [] }; // Pour rollback
+    let emptyRowsCount = 0;       // Lignes completement vides (pas de donnees)
+    let noKeyRowsCount = 0;       // Lignes avec donnees mais sans cle
+
+    if (unmappedGristCols.length > 0) {
+      resume.push(`WARNING: ${unmappedGristCols.length} colonne(s) Grist sans correspondance Excel (ignorees) : ${unmappedGristCols.join(", ")}`);
+      console.warn("Colonnes Grist non mappees:", unmappedGristCols);
+    }
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -404,21 +434,68 @@ export async function importToGrist({ excelData, mapping, dryRun = false, onProg
         lineByNorm[gristColNorm] = finalVal;
       }
 
-      // Cle composite
-      const keyParts = uniqueKeyGristCols.map(({ norm }) => {
-        const val = lineByNorm[norm];
-        return val === null || val === undefined ? "" : String(val).trim();
-      });
-      const compositeKey = keyParts.join("|||");
+      // Recherche de doublon (composite ou fallback)
+      let existing = null;
+      let keyParts = [];
+      let usedKeyLabel = "";
 
-      if (keyParts.every(p => p === "")) {
-        const keyLabels = uniqueKeyGristCols.map(k => k.gristCol).join(" + ");
-        resume.push(`Ligne ${i + 1} : IGNOREE (cle "${keyLabels}" vide)`);
-        stats.skipped++;
-        continue;
+      if (keyMode === "fallback") {
+        // Mode fallback : essayer chaque cle dans l'ordre de priorite
+        for (const { norm, gristCol } of uniqueKeyGristCols) {
+          const val = lineByNorm[norm];
+          const key = val === null || val === undefined ? "" : String(val).trim();
+          if (key && gristFallbackIndexes[norm]?.[key]) {
+            existing = gristFallbackIndexes[norm][key];
+            keyParts = [key];
+            usedKeyLabel = gristCol;
+            break;
+          }
+        }
+
+        // Verifier si TOUTES les cles sont vides
+        const allKeysEmpty = uniqueKeyGristCols.every(({ norm }) => {
+          const val = lineByNorm[norm];
+          return val === null || val === undefined || String(val).trim() === "";
+        });
+
+        if (allKeysEmpty) {
+          // Distinguer ligne completement vide vs ligne avec donnees mais sans cle
+          const hasAnyData = Object.values(lineByNorm).some(v =>
+            v !== null && v !== undefined && v !== "" && String(v).trim() !== ""
+          );
+          if (hasAnyData) {
+            noKeyRowsCount++;
+          } else {
+            emptyRowsCount++;
+          }
+          stats.skipped++;
+          continue;
+        }
+      } else {
+        // Mode composite : cle jointe classique
+        keyParts = uniqueKeyGristCols.map(({ norm }) => {
+          const val = lineByNorm[norm];
+          return val === null || val === undefined ? "" : String(val).trim();
+        });
+        const compositeKey = keyParts.join("|||");
+
+        if (keyParts.every(p => p === "")) {
+          // Distinguer ligne completement vide vs ligne avec donnees mais sans cle
+          const hasAnyData = Object.values(lineByNorm).some(v =>
+            v !== null && v !== undefined && v !== "" && String(v).trim() !== ""
+          );
+          if (hasAnyData) {
+            noKeyRowsCount++;
+          } else {
+            emptyRowsCount++;
+          }
+          stats.skipped++;
+          continue;
+        }
+
+        existing = gristIndex[compositeKey];
+        usedKeyLabel = uniqueKeyGristCols.map(k => k.gristCol).join(" + ");
       }
-
-      const existing = gristIndex[compositeKey];
 
       if (existing) {
         // UPDATE
@@ -465,13 +542,15 @@ export async function importToGrist({ excelData, mapping, dryRun = false, onProg
           }
         }
 
+        const keyInfo = keyMode === "fallback" ? `${usedKeyLabel}=${keyParts.join(" | ")}` : keyParts.join(" | ");
+
         if (hasUpdate) {
           actions.push(["UpdateRecord", currentTableId, existing.id, updates]);
           rollbackData.updated.push({ id: existing.id, previousValues });
-          resume.push(`Ligne ${i + 1} : UPDATE [${keyParts.join(" | ")}]`);
+          resume.push(`Ligne ${i + 1} : UPDATE [${keyInfo}]`);
           stats.updated++;
         } else {
-          resume.push(`Ligne ${i + 1} : IGNORE [${keyParts.join(" | ")}]`);
+          resume.push(`Ligne ${i + 1} : IGNORE [${keyInfo}]`);
           stats.skipped++;
         }
       } else {
@@ -489,7 +568,16 @@ export async function importToGrist({ excelData, mapping, dryRun = false, onProg
       }
     }
 
-    // 11) Appliquer par batch avec gestion d'erreur par batch
+    // Resume des lignes exclues (pas de detail ligne par ligne pour le bruit)
+    if (emptyRowsCount > 0) {
+      resume.push(`${emptyRowsCount} ligne(s) vide(s) en fin de fichier exclue(s)`);
+    }
+    if (noKeyRowsCount > 0) {
+      const keyLabels = uniqueKeyGristCols.map(k => k.gristCol).join(keyMode === "fallback" ? " / " : " + ");
+      resume.push(`${noKeyRowsCount} ligne(s) ignoree(s) : donnees presentes mais cle "${keyLabels}" manquante`);
+    }
+
+    // 12) Appliquer par batch avec gestion d'erreur par batch
     if (actions.length > 0 && !dryRun) {
       const BATCH_SIZE = 100;
       const addedIds = [];
@@ -519,6 +607,11 @@ export async function importToGrist({ excelData, mapping, dryRun = false, onProg
       console.log(`[DRY-RUN] ${actions.length} action(s) simulee(s)`);
     }
 
+    // Ajuster les stats : retirer les lignes vides du compteur "ignorees"
+    stats.emptyRows = emptyRowsCount;
+    stats.noKeyRows = noKeyRowsCount;
+    stats.skipped = stats.skipped - emptyRowsCount - noKeyRowsCount;
+
     return { resume, stats, dryRun, rollbackData };
   } finally {
     setImportInProgress(false);
@@ -531,18 +624,29 @@ export async function importToGrist({ excelData, mapping, dryRun = false, onProg
 
 /**
  * Annule un import en supprimant les records ajoutes et restaurant les modifies.
+ * Valide l'existence des IDs avant d'agir pour eviter les erreurs.
  * @param {Object} rollbackData - { added: number[], updated: { id, previousValues }[] }
+ * @returns {Promise<{ message: string, count: number, warnings: string[] }>}
  */
 export async function rollbackImport(rollbackData) {
   const currentTableId = getCurrentTableId();
   if (!currentTableId) throw new Error("Table cible introuvable.");
 
+  // Valider que les records existent encore dans Grist
+  const currentData = await grist.docApi.fetchTable(currentTableId);
+  const existingIds = new Set(currentData.id || []);
+  const warnings = [];
+
   const actions = [];
 
-  // Supprimer les records ajoutes
+  // Supprimer les records ajoutes (seulement ceux qui existent encore)
   if (rollbackData.added?.length > 0) {
     for (const id of rollbackData.added) {
-      actions.push(["RemoveRecord", currentTableId, id]);
+      if (existingIds.has(id)) {
+        actions.push(["RemoveRecord", currentTableId, id]);
+      } else {
+        warnings.push(`Record #${id} deja supprime, ignore.`);
+      }
     }
   }
 
@@ -550,24 +654,57 @@ export async function rollbackImport(rollbackData) {
   if (rollbackData.updated?.length > 0) {
     for (const { id, previousValues } of rollbackData.updated) {
       if (Object.keys(previousValues).length > 0) {
-        actions.push(["UpdateRecord", currentTableId, id, previousValues]);
+        if (existingIds.has(id)) {
+          actions.push(["UpdateRecord", currentTableId, id, previousValues]);
+        } else {
+          warnings.push(`Record #${id} supprime, restauration impossible.`);
+        }
       }
     }
   }
 
-  if (actions.length === 0) {
-    return { message: "Rien a annuler.", count: 0 };
+  if (actions.length === 0 && warnings.length === 0) {
+    return { message: "Rien a annuler.", count: 0, warnings };
   }
 
-  const BATCH_SIZE = 100;
-  for (let b = 0; b < actions.length; b += BATCH_SIZE) {
-    await grist.docApi.applyUserActions(actions.slice(b, b + BATCH_SIZE));
+  if (actions.length > 0) {
+    const BATCH_SIZE = 100;
+    for (let b = 0; b < actions.length; b += BATCH_SIZE) {
+      await grist.docApi.applyUserActions(actions.slice(b, b + BATCH_SIZE));
+    }
   }
 
+  // Marquer le log comme rolled back
+  await markImportAsRolledBack();
+
+  // Vider le rollback data en memoire
+  setLastRollbackData(null);
+  setLastRollbackLogId(null);
+
+  const deletedCount = rollbackData.added?.length || 0;
+  const restoredCount = rollbackData.updated?.length || 0;
   return {
-    message: `Rollback termine : ${rollbackData.added?.length || 0} suppression(s), ${rollbackData.updated?.length || 0} restauration(s).`,
+    message: `Rollback termine : ${deletedCount} suppression(s), ${restoredCount} restauration(s).`,
     count: actions.length,
+    warnings,
   };
+}
+
+/**
+ * Marque le dernier import de cette session comme rolled back dans IMPORT_LOG.
+ */
+async function markImportAsRolledBack() {
+  try {
+    const { getLastRollbackLogId } = await import("./state.js");
+    const logId = getLastRollbackLogId();
+    if (!logId) return;
+
+    await grist.docApi.applyUserActions([
+      ["UpdateRecord", "IMPORT_LOG", logId, { rolled_back: true, rollback_data: "" }],
+    ]);
+  } catch (err) {
+    console.warn("Impossible de marquer l'import comme annule:", err);
+  }
 }
 
 // =========================
@@ -588,11 +725,16 @@ export async function logImport({ fileName, sheetName, stats, dryRun, rollbackDa
           { id: "rows_errors", type: "Int" },
           { id: "dry_run", type: "Bool" },
           { id: "rollback_data", type: "Text" },
+          { id: "session_id", type: "Text" },
+          { id: "rolled_back", type: "Bool" },
         ]],
       ]);
+    } else {
+      // Migration : ajouter les nouvelles colonnes si absentes
+      await migrateImportLogColumns();
     }
 
-    await grist.docApi.applyUserActions([
+    const result = await grist.docApi.applyUserActions([
       ["AddRecord", "IMPORT_LOG", null, {
         timestamp: new Date().toISOString(),
         file_name: fileName || "inconnu",
@@ -603,24 +745,78 @@ export async function logImport({ fileName, sheetName, stats, dryRun, rollbackDa
         rows_errors: stats.errors || 0,
         dry_run: dryRun || false,
         rollback_data: rollbackData ? JSON.stringify(rollbackData) : "",
+        session_id: getSessionId(),
+        rolled_back: false,
       }],
     ]);
+
+    // Stocker le rollback data en memoire pour cette session
+    if (rollbackData && !dryRun) {
+      setLastRollbackData(rollbackData);
+      // Recuperer l'ID du log cree
+      if (result?.retValues?.[0]) {
+        setLastRollbackLogId(result.retValues[0]);
+      }
+    }
   } catch (err) {
     console.warn("Impossible d'ecrire le log d'import:", err);
   }
 }
 
 /**
+ * Ajoute session_id et rolled_back a IMPORT_LOG si absentes.
+ */
+async function migrateImportLogColumns() {
+  try {
+    const data = await grist.docApi.fetchTable("IMPORT_LOG");
+    const actions = [];
+    if (data.session_id === undefined) {
+      actions.push(["AddColumn", "IMPORT_LOG", "session_id", { type: "Text" }]);
+    }
+    if (data.rolled_back === undefined) {
+      actions.push(["AddColumn", "IMPORT_LOG", "rolled_back", { type: "Bool" }]);
+    }
+    if (actions.length > 0) {
+      await grist.docApi.applyUserActions(actions);
+      console.log("Migration IMPORT_LOG: colonnes session_id/rolled_back ajoutees.");
+    }
+  } catch (err) {
+    console.warn("Migration IMPORT_LOG impossible:", err);
+  }
+}
+
+/**
  * Recupere le dernier import pour rollback.
+ * Priorite : rollback data en memoire (session), sinon fallback IMPORT_LOG filtre par session_id.
  */
 export async function getLastImportForRollback() {
+  // Priorite 1 : rollback data en memoire (isole par session)
+  const { getLastRollbackData, getLastRollbackLogId } = await import("./state.js");
+  const memoryData = getLastRollbackData();
+  if (memoryData) {
+    return {
+      id: getLastRollbackLogId(),
+      timestamp: new Date().toISOString(),
+      fileName: "session courante",
+      rollbackData: memoryData,
+    };
+  }
+
+  // Priorite 2 : IMPORT_LOG filtre par session_id
   try {
     const data = await grist.docApi.fetchTable("IMPORT_LOG");
     if (!data.id?.length) return null;
 
-    // Trouver le dernier import non dry-run
+    const sessionId = getSessionId();
+
     for (let i = data.id.length - 1; i >= 0; i--) {
-      if (!data.dry_run[i] && data.rollback_data[i]) {
+      // Filtre par session + non dry-run + non deja rolled back
+      const matchesSession = data.session_id?.[i] === sessionId;
+      const notDryRun = !data.dry_run[i];
+      const hasRollbackData = data.rollback_data[i];
+      const notRolledBack = !data.rolled_back?.[i];
+
+      if (matchesSession && notDryRun && hasRollbackData && notRolledBack) {
         try {
           const rollbackData = JSON.parse(data.rollback_data[i]);
           return {
