@@ -137,7 +137,9 @@ test("Aperçu sans écriture, import idempotent, double clic et annulation", asy
   ]);
   await validate(page);
   await expect(page.locator("#apply")).toBeDisabled();
-  await expect(page.locator("#status")).toContainText("Aucun changement à appliquer");
+  await expect(page.locator("#status")).toContainText(
+    "Aucun changement à appliquer",
+  );
   await page.locator("#undo").click();
   await expect(page.locator("#status")).toContainText("annulé");
   expect(await page.evaluate(() => testData.Test.id)).toEqual([]);
@@ -157,6 +159,9 @@ test("Date invalide signalée avec ligne et aucun import autorisé", async ({
   await validate(page);
   await expect(page.locator("#plan")).toContainText("ligne 2");
   await expect(page.locator("#plan")).toContainText("Date impossible");
+  await expect(page.locator("#plan")).toContainText(
+    "Vérifiez cette cellule dans Excel",
+  );
   await expect(page.locator("#apply")).toBeDisabled();
 });
 test("Correspondance manuelle et correction d’une règle incompatible", async ({
@@ -371,7 +376,7 @@ test("Un fichier de mise à jour à en-tête différent retrouve la ligne exista
   await expect(page.locator("#plan")).toContainText("Modification");
   await page.locator("#apply").click();
   await expect(page.locator("#status")).toContainText(
-    "0 ajout(s), 1 modification(s)",
+    "0 ligne ajoutée, 1 ligne mise à jour",
   );
   expect(await page.evaluate(() => testData.Test)).toEqual({
     id: [7],
@@ -382,4 +387,49 @@ test("Un fichier de mise à jour à en-tête différent retrouve la ligne exista
   await page.locator("#undo").click();
   await expect(page.locator("#status")).toContainText("annulé");
   expect(await page.evaluate(() => testData.Test.Date)).toEqual([null]);
+});
+
+test("Résultat lisible sur mobile : noms métier, Oui/Non et confirmation de l’écriture", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    testData.Test = { id: [7], Key: ["000042"], Date: [null], Flag: [false] };
+  });
+  await upload(page, [
+    [
+      "Fictif",
+      [
+        ["Identifiant", "Actif"],
+        ["000042", 1],
+      ],
+    ],
+  ]);
+  await validate(page);
+  const changes = page.locator(".change-card");
+  await expect(changes).toContainText("Actif");
+  await expect(changes).not.toContainText("Flag");
+  await expect(changes).toContainText("Non");
+  await expect(changes).toContainText("Oui");
+  await expect(page.locator("#plan")).toContainText(
+    "Rien n’a encore été modifié",
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "/tmp/widget-results-blue-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1200, height: 1000 });
+  await page.screenshot({
+    path: "/tmp/widget-results-blue-desktop.png",
+    fullPage: true,
+  });
+  await page.locator("#apply").click();
+  await expect(page.locator("#plan")).toContainText("Changements enregistrés");
+  await expect(page.locator("#plan")).not.toContainText("Après confirmation");
+  expect(await page.evaluate(() => testData.Test.Flag)).toEqual([true]);
 });

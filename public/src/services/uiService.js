@@ -38,102 +38,190 @@ export function dataTable(headers, rows) {
     ]),
   ]);
 }
-export function renderPlan(plan, container) {
+export function renderPlan(plan, container, { applied = false } = {}) {
   container.replaceChildren();
+  const columns = Object.fromEntries(plan.columns.map((c) => [c.id, c]));
+  const label = (id) => columns[id]?.label || id;
+  container.append(
+    el("h3", {
+      text: applied ? "Import terminé" : "Résultat de la vérification",
+    }),
+  );
+  container.append(
+    el("p", {
+      class: "muted",
+      text: applied
+        ? "Les changements ci-dessous ont été enregistrés dans Grist."
+        : plan.errors.length
+          ? "L’import attend vos corrections. Aucune donnée n’a été modifiée dans Grist."
+          : "Rien n’a encore été modifié. Vérifiez le résultat prévu avant de confirmer l’import.",
+    }),
+  );
   const labels = {
-    added: "ajouts",
-    updated: "modifications",
-    unchanged: "inchangées",
-    errors: "erreurs",
+    added: applied ? "lignes ajoutées" : "lignes à ajouter",
+    updated: applied ? "lignes mises à jour" : "lignes à mettre à jour",
+    unchanged: "lignes conservées",
+    errors: "erreurs à corriger",
   };
   container.append(
     el(
       "div",
       { class: "stats" },
-      Object.entries(labels).map(([key, label]) =>
+      Object.entries(labels).map(([key, text]) =>
         el(
           "div",
           {
             class: `stat ${key === "errors" && plan.stats[key] ? "danger" : ""}`,
           },
-          [
-            el("strong", { text: plan.stats[key] }),
-            el("span", { text: label }),
-          ],
+          [el("strong", { text: plan.stats[key] }), el("span", { text })],
         ),
       ),
     ),
   );
-  if (plan.errors.length)
+  if (plan.errors.length) {
     container.append(
       el("div", { class: "notice error", role: "alert" }, [
-        el("strong", {
-          text: "L’import est bloqué. Aucune donnée n’a été écrite.",
+        el("strong", { text: "À corriger avant l’import" }),
+        el("p", {
+          text: "Retrouvez la feuille, la ligne et la colonne concernées ci-dessous. Après correction, relancez la vérification.",
         }),
-        el(
-          "ul",
-          {},
-          plan.errors
-            .slice(0, 50)
-            .map((e) => el("li", { text: location(e) + e.message })),
-        ),
+        ...plan.errors
+          .slice(0, 50)
+          .map((issue) =>
+            el("div", { class: "issue" }, [
+              el("strong", {
+                text: location(issue, label) || "Paramètres de l’import",
+              }),
+              el("p", { text: issue.message }),
+              el("p", {
+                class: "issue-help",
+                text: correctionHint(issue.message),
+              }),
+            ]),
+          ),
         ...(plan.errors.length > 50
           ? [
               el("p", {
-                text: "Seules les 50 premières erreurs sont affichées. Le rapport contient toutes les erreurs.",
+                text: "Les 50 premières erreurs sont affichées. Téléchargez le rapport pour consulter la liste complète.",
               }),
             ]
           : []),
       ]),
     );
+  }
   if (plan.warnings.length)
     container.append(
-      el("details", {}, [
-        el("summary", { text: `${plan.warnings.length} points à vérifier` }),
+      el("details", { class: "review-notes" }, [
+        el("summary", {
+          text: `${plan.warnings.length} points à vérifier · l’import reste possible`,
+        }),
         el(
           "ul",
           {},
           plan.warnings
             .slice(0, 100)
-            .map((e) => el("li", { text: location(e) + e.message })),
+            .map((issue) =>
+              el("li", {
+                text: `${location(issue, label)} : ${issue.message}`,
+              }),
+            ),
         ),
+        ...(plan.warnings.length > 100
+          ? [
+              el("p", {
+                text: "Les 100 premiers points sont affichés. Le rapport contient la liste complète.",
+              }),
+            ]
+          : []),
       ]),
     );
-  const types = Object.fromEntries(plan.columns.map((c) => [c.id, c.type]));
-  const lines = plan.details
-    .filter((d) => d.status !== "Inchangée")
-    .slice(0, 50)
-    .flatMap((d) =>
-      Object.entries(d.after).map(([id, value]) => [
-        d.sheet,
-        d.row,
-        d.status,
-        id,
-        formatValue(d.before[id], types[id]),
-        formatValue(value, types[id]),
-      ]),
-    );
-  if (lines.length) {
+  const changed = plan.details.filter((d) => d.status !== "Inchangée");
+  if (changed.length) {
     container.append(
-      el("p", {
-        class: "muted",
-        text: "Aperçu des changements · 50 premières lignes modifiées",
+      el("h3", {
+        text: applied ? "Changements enregistrés" : "Changements prévus",
       }),
     );
     container.append(
-      dataTable(
-        ["Feuille", "Ligne Excel", "Action", "Colonne", "Avant", "Après"],
-        lines,
-      ),
+      el("p", {
+        class: "muted",
+        text: "Chaque bloc correspond à une ligne de votre fichier Excel. Seuls les champs à renseigner ou à modifier sont affichés.",
+      }),
     );
+    for (const d of changed.slice(0, 50)) {
+      container.append(
+        el(
+          "details",
+          {
+            class: "change-card",
+            ...(changed.length <= 5 ? { open: "" } : {}),
+          },
+          [
+            el("summary", {}, [
+              el("span", {
+                class: "change-badge",
+                text: d.status === "Ajout" ? "Nouvelle ligne" : "Modification",
+              }),
+              el("span", { text: `${d.sheet} · ligne ${d.row}` }),
+            ]),
+            dataTable(
+              [
+                "Champ",
+                applied ? "Avant l’import" : "Actuellement dans Grist",
+                applied ? "Après l’import" : "Après confirmation",
+              ],
+              Object.entries(d.after).map(([id, value]) => [
+                label(id),
+                d.status === "Ajout"
+                  ? "Nouvelle ligne"
+                  : displayValue(d.before[id], columns[id]?.type),
+                displayValue(value, columns[id]?.type),
+              ]),
+            ),
+          ],
+        ),
+      );
+    }
+    if (changed.length > 50)
+      container.append(
+        el("p", {
+          class: "muted",
+          text: "Aperçu limité aux 50 premières lignes. Téléchargez le rapport pour retrouver toutes les lignes concernées.",
+        }),
+      );
   }
+  if (plan.stats.unchanged)
+    container.append(
+      el("p", {
+        class: "muted",
+        text: "Les lignes conservées restent telles quelles dans Grist : les règles choisies ne prévoient aucun changement pour ces lignes.",
+      }),
+    );
 }
-function location(issue) {
-  return (
-    [issue.sheet, issue.row && `ligne ${issue.row}`, issue.column]
-      .filter(Boolean)
-      .join(" · ") + " : "
-  );
+function displayValue(value, type) {
+  return value == null || value === "" ? "Vide" : formatValue(value, type);
+}
+function location(issue, label = (id) => id) {
+  return [
+    issue.sheet,
+    issue.row && `ligne ${issue.row}`,
+    issue.column && label(issue.column),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+function correctionHint(message) {
+  if (/correspondance|associer/i.test(message))
+    return "Dans l’étape 2, choisissez la colonne Grist correspondant à chaque identifiant du fichier.";
+  if (/réservé aux dates|règle/i.test(message))
+    return "Dans l’étape 2, vérifiez la règle choisie pour cette colonne.";
+  if (/date|heure/i.test(message))
+    return "Vérifiez cette cellule dans Excel (par exemple 10/12/2025 pour une date), enregistrez le fichier puis sélectionnez-le à nouveau.";
+  if (/répété|doublon|ambigu/i.test(message))
+    return "Vérifiez les identifiants dans le fichier et dans Grist : ils doivent permettre de reconnaître une seule ligne.";
+  if (/vide|incomplet/i.test(message))
+    return "Complétez la cellule indiquée dans Excel, enregistrez le fichier puis sélectionnez-le à nouveau.";
+  return "Vérifiez la valeur indiquée et sa colonne de destination à l’étape 2, puis relancez la vérification.";
 }
 export function downloadReport(plan) {
   const rows = [["Feuille", "Ligne Excel", "Statut", "Message"]];

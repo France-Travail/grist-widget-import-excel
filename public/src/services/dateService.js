@@ -129,6 +129,7 @@ export function parseDate(
 
 export function formatValue(value, type = "") {
   if (value == null) return "—";
+  if (typeof value === "boolean") return value ? "Oui" : "Non";
   if (
     (type === "Date" || type.startsWith("DateTime:")) &&
     typeof value === "number"
