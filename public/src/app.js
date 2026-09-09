@@ -56,6 +56,14 @@ export async function start({ version, revision }) {
     busy = false,
     generation = 0;
   const api = grist.docApi;
+  const sessionMappings = new Map();
+  function rememberMapping(sheet, header, target) {
+    sheet.mapping[header] = target;
+    if (!sessionMappings.has(tableId)) sessionMappings.set(tableId, new Map());
+    sessionMappings.get(tableId).set(header, target);
+    invalidate();
+    renderMappings();
+  }
   function status(message, error = false) {
     $("status").hidden = !message;
     $("status").textContent = message;
@@ -137,6 +145,37 @@ export async function start({ version, revision }) {
         container.append(
           el("p", { class: "muted", text: sheet.warnings.join(" ") }),
         );
+      for (const key of config.keys.filter(
+        (key) => !Object.values(sheet.mapping).includes(key),
+      )) {
+        const column = columns.find((column) => column.id === key);
+        const choose = el(
+          "select",
+          {
+            "aria-label": `Identifiant Excel pour ${column?.label || key} (${sheet.name})`,
+          },
+          [
+            option("", "Choisir la colonne du fichier…"),
+            ...sheet.headers
+              .filter((header) => !sheet.mapping[header])
+              .map((header) => option(header, header)),
+          ],
+        );
+        choose.onchange = () => {
+          if (choose.value) rememberMapping(sheet, choose.value, key);
+        };
+        container.append(
+          el("div", { class: "notice error required-mapping" }, [
+            el("strong", {
+              text: `Quelle colonne du fichier contient « ${column?.label || key} » ?`,
+            }),
+            el("p", {
+              text: "Cet identifiant est nécessaire pour retrouver les lignes dans Grist. Le nom dans Excel peut être différent : choisissez sa correspondance ici.",
+            }),
+            choose,
+          ]),
+        );
+      }
       for (const header of sheet.headers) {
         const target = sheet.mapping[header];
         const select = el(
@@ -156,9 +195,7 @@ export async function start({ version, revision }) {
         );
         select.value = target || "";
         select.onchange = () => {
-          sheet.mapping[header] = select.value;
-          invalidate();
-          renderMappings();
+          rememberMapping(sheet, header, select.value);
         };
         const rule = el(
           "select",
@@ -176,14 +213,26 @@ export async function start({ version, revision }) {
           invalidate();
           renderMappings();
         };
-        const desc = config.keys.includes(target)
-          ? "Clé d’identification"
-          : RULES[rule.value]?.[1] || "";
+        const incompatibleDateRule =
+          rule.value === "update_if_newer" &&
+          target &&
+          !columns.find((c) => c.id === target)?.type.startsWith("Date");
+        const desc = incompatibleDateRule
+          ? "Cette règle ne convient pas à ce champ. Choisissez une autre règle, par exemple « Remplacer si renseigné » pour importer les valeurs Oui/Non."
+          : config.keys.includes(target)
+            ? "Clé d’identification"
+            : RULES[rule.value]?.[1] || "";
         container.append(
           el("div", { class: `mapping-row ${!target ? "unmatched" : ""}` }, [
             el("strong", { text: header }),
             select,
-            el("div", {}, [rule, el("small", { text: desc })]),
+            el("div", {}, [
+              rule,
+              el("small", {
+                text: desc,
+                class: incompatibleDateRule ? "rule-error" : "",
+              }),
+            ]),
           ]),
         );
       }
@@ -210,9 +259,17 @@ export async function start({ version, revision }) {
       const previous = sheet.mapping;
       Object.assign(sheet, parsed, { error: null });
       sheet.mapping = { ...matchColumns(sheet.headers, columns) };
-      for (const h of sheet.headers)
+      for (const h of sheet.headers) {
+        const remembered = sessionMappings.get(tableId);
+        if (
+          remembered?.has(h) &&
+          (!remembered.get(h) ||
+            columns.some((c) => c.id === remembered.get(h) && !c.isFormula))
+        )
+          sheet.mapping[h] = remembered.get(h);
         if (previous && Object.hasOwn(previous, h))
           sheet.mapping[h] = previous[h];
+      }
     } catch (e) {
       sheet.error = e.message;
     }

@@ -433,3 +433,52 @@ test("Résultat lisible sur mobile : noms métier, Oui/Non et confirmation de l�
   await expect(page.locator("#plan")).not.toContainText("Après confirmation");
   expect(await page.evaluate(() => testData.Test.Flag)).toEqual([true]);
 });
+
+test("Une clé manquante se relie avant validation et reste associée au fichier suivant", async ({
+  page,
+}) => {
+  await upload(page, [
+    [
+      "Fictif",
+      [
+        ["Code du dossier", "Actif"],
+        ["000042", 1],
+      ],
+    ],
+  ]);
+  const prompt = page.getByLabel(
+    "Identifiant Excel pour Identifiant (Fictif)",
+    { exact: true },
+  );
+  await expect(prompt).toBeVisible();
+  await prompt.selectOption("Code du dossier");
+  await expect(prompt).toHaveCount(0);
+  await page
+    .getByLabel("Règle pour Actif (Fictif)", { exact: true })
+    .selectOption("update_if_newer");
+  await expect(page.locator(".rule-error")).toContainText(
+    "Cette règle ne convient pas",
+  );
+  await page
+    .getByLabel("Règle pour Actif (Fictif)", { exact: true })
+    .selectOption("overwrite");
+  await validate(page);
+  await expect(page.locator("#apply")).toBeEnabled();
+  await upload(page, [
+    [
+      "Suite",
+      [
+        ["Code du dossier", "Actif"],
+        ["000043", 0],
+      ],
+    ],
+  ]);
+  await expect(
+    page.getByLabel("Colonne Grist pour Code du dossier (Suite)", {
+      exact: true,
+    }),
+  ).toHaveValue("Key");
+  expect(await page.evaluate(() => testCalls.length)).toBe(0);
+  await validate(page);
+  await expect(page.locator("#apply")).toBeEnabled();
+});

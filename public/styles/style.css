@@ -529,3 +529,11 @@ footer {
   overflow-wrap: anywhere;
   padding: 10px 8px;
 }
+
+.mapping-row .rule-error {
+  color: var(--error);
+  font-weight: 600;
+}
+.required-mapping select {
+  margin-top: 8px;
+}
