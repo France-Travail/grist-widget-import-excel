@@ -22,7 +22,7 @@ export async function start({ version, revision }) {
   app.innerHTML = `
     <header class="masthead"><div class="brand-mark" aria-hidden="true">↗</div><div><p class="eyebrow">GRIST · IMPORT DE DONNÉES</p><h1>Vos fichiers, à jour.</h1><p class="subtitle">Préparez, vérifiez, puis importez vos données Excel.</p></div></header>
     <div class="context-bar"><span id="connection" role="status">Connexion à Grist…</span><button id="refresh" class="link-button">Actualiser la table</button><span id="version" class="version"></span></div>
-    <div id="update-banner" class="notice" hidden>Une nouvelle version est disponible. <button id="reload" class="link-button">Recharger le widget</button><span class="muted"> Le fichier et l’annulation de cette session seront perdus.</span></div>
+    <div id="update-banner" class="notice" hidden><strong>Une amélioration de l’outil est disponible.</strong><p>Vous pouvez terminer votre import avant de l’installer. Vos données et vos règles enregistrées dans Grist seront conservées.</p><button id="reload" class="link-button">Installer la mise à jour</button><span class="muted"> Après ce rechargement, il faudra sélectionner à nouveau votre fichier. Pour annuler un import précédent, utilisez l’historique Grist.</span></div>
     <div id="status" role="status" aria-live="polite" hidden></div>
     <fieldset id="controls">
       <section class="card"><div class="section-title"><span class="step">1</span><div><h2>Choisir les données</h2><p>Votre fichier reste dans ce navigateur jusqu’à l’import vers Grist.</p></div></div>
@@ -149,7 +149,7 @@ export async function start({ version, revision }) {
               .map((c) =>
                 option(
                   c.id,
-                  `${c.label}${c.id !== c.label ? ` (${c.id})` : ""} · ${c.type}`,
+                  `${c.label}${columns.filter((other) => other.label === c.label).length > 1 ? ` (${c.id})` : ""} · ${{ Text: "Texte", Bool: "Oui / Non", Int: "Nombre entier", Numeric: "Nombre", Choice: "Choix", ChoiceList: "Liste de choix", Date: "Date", DateTime: "Date et heure", Ref: "Référence", RefList: "Liste de références" }[c.type.split(":")[0]] || c.type}`,
                 ),
               ),
           ],
@@ -332,7 +332,9 @@ export async function start({ version, revision }) {
     run(async () => {
       await saveRules(api, columns, config);
       invalidate();
-      status("Règles enregistrées dans RULES_CONFIG.");
+      status(
+        "Règles enregistrées. Elles seront réutilisées lors de vos prochains imports.",
+      );
     });
   $("refresh").onclick = () => {
     if (tableId) run(() => loadTable(tableId));
@@ -359,7 +361,8 @@ export async function start({ version, revision }) {
       $("report").hidden = false;
       $("report").onclick = () => downloadReport(prepared);
       $("apply").disabled = !!plan.errors.length || !plan.changes.length;
-      $("apply").textContent = `Importer ${plan.changes.length} changement(s)`;
+      $("apply").textContent =
+        `Confirmer l’import de ${plan.changes.length} ligne${plan.changes.length > 1 ? "s" : ""}`;
       status(
         plan.errors.length
           ? "Corrigez les erreurs signalées avant de continuer."
@@ -378,8 +381,9 @@ export async function start({ version, revision }) {
       try {
         undo = await applyImport(api, appliedPlan);
         $("undo").hidden = !undo || undo.unavailable;
+        renderPlan(appliedPlan, $("plan"), { applied: true });
         status(
-          `Import terminé : ${appliedPlan.stats.added} ajout(s), ${appliedPlan.stats.updated} modification(s).` +
+          `Import terminé : ${appliedPlan.stats.added} ligne${appliedPlan.stats.added > 1 ? "s" : ""} ajoutée${appliedPlan.stats.added > 1 ? "s" : ""}, ${appliedPlan.stats.updated} ligne${appliedPlan.stats.updated > 1 ? "s" : ""} mise${appliedPlan.stats.updated > 1 ? "s" : ""} à jour.` +
             (undo?.unavailable
               ? " L’annulation reste disponible dans l’historique Grist."
               : ""),
