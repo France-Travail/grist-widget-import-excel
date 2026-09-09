@@ -25,13 +25,14 @@ pas sur une incapacité générale de Grist à interpréter les chaînes ISO.
 - **78 tests Node** : conversion des dates, calendriers 1900/1904, fuseaux et changements
   d’heure, identifiants, règles, doublons, références, lecture de vrais classeurs générés,
   transactions et annulations avec API simulée, empreintes des dépendances, build.
-- **11 tests navigateur** : simulation sans écriture, import et réimport, double clic,
+- **12 tests navigateur** : simulation sans écriture, import et réimport, double clic,
   annulation, erreurs avec numéros de ligne, correspondances manuelles, règles
   incompatibles, plusieurs feuilles, en-tête décalé, rendu HTML sûr, largeur mobile,
   enregistrement explicite des règles, aperçu périmé, notification de mise à jour et
   chargement de nouvelles ressources à la même URL, mise à jour d’une ligne existante
   après association manuelle d’un en-tête différent, noms de champs lisibles, valeurs
-  Oui/Non et distinction entre aperçu et import enregistré.
+  Oui/Non et distinction entre aperçu et import enregistré, association guidée des
+  identifiants et réutilisation de cette association entre fichiers de la session.
 - **Essais sur une copie Grist autorisée** : lecture du schéma réel et simulation ;
   dans deux tables temporaires entièrement fictives, ajout de dates, DateTime,
   booléens, nombres, listes et références, réimport sans changement, annulation des
