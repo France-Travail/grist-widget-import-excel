@@ -1,0 +1,2 @@
+# Preserve upstream distributions byte-for-byte, including their whitespace.
+public/vendor/*.js -whitespace linguist-vendored

@@ -1,517 +1,280 @@
-// src/services/gristService.js
-// ===========================
-// Communication avec Grist + import Excel
-// ===========================
+import { tableRecords, normalizeName, equal } from "./utils.js";
+import { buildImportPlan } from "./importEngine.js";
 
-import { fetchImportRules } from "./rulesService.js";
-import { normalizeName } from "./utils.js";
-import { ensureRulesTableExists } from "./rulesSetupService.js";
-
-// =========================
-// 🧠 État interne
-// =========================
-let tableData = [];
-let gristSchema = {}; // { ColName: "Text" | "Date" | ... }
-let currentTableId = null;
-
-// =========================
-// 📤 Getters
-// =========================
-export function getCurrentTableId() {
-  return currentTableId;
-}
-export function getGristColumnTypes() {
-  return gristSchema;
-}
-export function getCurrentGristData() {
-  return tableData;
-}
-
-// =========================
-// 🔌 Init Grist
-// =========================
-export function initGristListener(onRecordsReceived) {
-  grist.ready({ requiredAccess: "full" });
-
-  grist.on("message", (e) => {
-    if (e.tableId) currentTableId = e.tableId;
-  });
-
-
-// Événement principal : réception des données du tableau sélectionné
-  grist.onRecords(async (records) => {
-    tableData = records || [];
-    gristSchema = await detectColumnTypesFromRecords(records || []);
-
-    // 🧩 Vérifie la présence de RULES_CONFIG avant de continuer
-    const rulesOk = await ensureRulesTableExists();
-    if (!rulesOk) {
-      console.warn("⛔ Table RULES_CONFIG manquante — arrêt du chargement widget.");
-      return; // ⛔ stoppe le flux, l'UI du setup prend le relais
-    }
-
-
-    // ✅ Si la table est présente, on continue normalement
-    onRecordsReceived?.(records || []);
-  });
-
-
-  // grist.onRecords((records) => {
-  //   tableData = records || [];
-  //   gristSchema = detectColumnTypesFromRecords(records || []);
-  //   onRecordsReceived?.(records || []);
-  // });
-
-  // Récupère l'ID de la table “active”
+export async function fetchSchema(api, tableId) {
+  const [tables, cols] = await Promise.all([
+    api.fetchTable("_grist_Tables"),
+    api.fetchTable("_grist_Tables_column"),
+  ]);
+  const tableRef = tables.id[tables.tableId.indexOf(tableId)];
+  if (tableRef == null)
+    throw new Error("Table cible introuvable ou inaccessible.");
+  return tableRecords(cols)
+    .filter(
+      (c) =>
+        c.parentId === tableRef &&
+        c.colId !== "manualSort" &&
+        !c.colId.startsWith("gristHelper_"),
+    )
+    .map((c) => ({
+      id: c.colId,
+      label: c.label || c.colId,
+      type: c.type,
+      isFormula: Boolean(c.isFormula && c.formula),
+      visibleCol: c.visibleCol,
+      ref: c.id,
+    }));
 }
 
-async function detectColumnTypesFromRecords(records) {
-  const types = {};
-  if (!records || records.length === 0) {
-    // Si pas de données, on essaie de récupérer les colonnes via l'API Grist
-    return await getColumnTypesFromEmptyTable();
-  }
-  const first = records[0];
-  for (const [key, value] of Object.entries(first)) {
-    if (key === "id" || key === "manualSort") continue;
-    if (value === null || value === undefined) types[key] = "Unknown";
-    else if (value instanceof Date) types[key] = "Date";
-    else if (typeof value === "boolean") types[key] = "Bool";
-    else if (typeof value === "number") types[key] = "Numeric";
-    else types[key] = "Text";
-  }
-  return types;
-}
-
-async function getColumnTypesFromEmptyTable() {
-  try {
-    // Récupère les métadonnées de la table pour avoir les colonnes même si elle est vide
-    const tableInfo = await grist.docApi.fetchTable(currentTableId);
-    const types = {};
-    
-    console.log("🔍 DEBUG - Informations de la table vide:", tableInfo);
-    console.log("🔍 DEBUG - Colonnes disponibles:", Object.keys(tableInfo));
-    
-    // Parcourt toutes les colonnes disponibles
-    for (const colName of Object.keys(tableInfo)) {
-      if (colName === "id" || colName === "manualSort") continue;
-      
-      // Essayer de détecter le type de colonne par le nom ou des indices
-      const lowerName = colName.toLowerCase();
-      
-      console.log(`🔍 DEBUG - Analyse de la colonne "${colName}" (${lowerName})`);
-      
-      // Détection basée sur le nom de la colonne
-      if (lowerName.includes('date') || lowerName.includes('time') || 
-          lowerName.includes('naissance') || lowerName.includes('créé') || 
-          lowerName.includes('modifié') || lowerName.includes('timestamp') ||
-          lowerName.includes('birth') || lowerName.includes('created') ||
-          lowerName.includes('updated') || lowerName.includes('modified')) {
-        types[colName] = "Date";
-        console.log(`✅ Colonne "${colName}" détectée comme Date`);
-      } else if (lowerName.includes('age') || lowerName.includes('nombre') || 
-                 lowerName.includes('count') || lowerName.includes('total') ||
-                 lowerName.includes('number') || lowerName.includes('amount')) {
-        types[colName] = "Numeric";
-        console.log(`✅ Colonne "${colName}" détectée comme Numeric`);
-      } else if (lowerName.includes('actif') || lowerName.includes('valid') || 
-                 lowerName.includes('enabled') || lowerName.includes('status') ||
-                 lowerName.includes('active') || lowerName.includes('is_')) {
-        types[colName] = "Bool";
-        console.log(`✅ Colonne "${colName}" détectée comme Bool`);
-      } else {
-        // Par défaut, on met "Text" pour les colonnes vides
-        types[colName] = "Text";
-        console.log(`⚠️ Colonne "${colName}" marquée comme Text par défaut`);
-      }
-    }
-    
-    console.log("📊 Types de colonnes détectés pour table vide:", types);
-    return types;
-  } catch (error) {
-    console.warn("Impossible de récupérer les colonnes de la table vide:", error);
-    return {};
-  }
-}
-
-// =========================
-// 🚀 Import principal
-// =========================
-export async function importToGrist({ excelData, mapping }) {
-  console.log("Import vers Grist lancé");
-
-  if (!currentTableId) {
-    console.error(
-      "currentTableId introuvable (grist.on('message') non déclenché)."
-    );
-    alert(
-      "Impossible d'identifier la table cible (currentTableId). Ouvre le widget dans une vue liée à une table."
-    );
-    return;
-  }
-
-  // 1) Récupération des règles (tolère ancien format & nouveau format)
-  const { rules: rawRules, uniqueKey: rawUniqueKey } = await fetchImportRules();
-  if (!rawUniqueKey) {
-    alert("Aucune clé unique définie dans RULES_CONFIG !");
-    return;
-  }
-
-  // 2) Colonnes Grist et dictionnaire de résolution
-  const gristColTypes = getGristColumnTypes(); // { "Prenom": "Text", ... }
-  const gristCols = Object.keys(gristColTypes); // ["Prenom","Nom","Age","Actif","A",...]
-  const normToGristCol = Object.fromEntries(
-    gristCols.map((c) => [normalizeName(c), c])
-  );
-
-  // 3) Normaliser rules (accepte 2 shapes : {col: "rule"} ou {norm: {original, rule}})
-  // -> on force une structure { [norm]: { rule, gristCol } } uniquement si la colonne existe dans Grist.
-  const normalizedRules = {};
-  const looksLikeNewShape =
-    rawRules &&
-    typeof Object.values(rawRules)[0] === "object" &&
-    "rule" in Object.values(rawRules)[0];
-
-  if (looksLikeNewShape) {
-    for (const [norm, data] of Object.entries(rawRules)) {
-      const gristCol =
-        normToGristCol[norm] ||
-        (data.original && normToGristCol[normalizeName(data.original)]);
-      if (!gristCol) {
-        console.warn(
-          `Règle ignorée: colonne introuvable dans Grist pour "${
-            data.original || norm
-          }"`
+export async function fetchRules(api, columns) {
+  const tables = await api.listTables();
+  if (!tables.includes("RULES_CONFIG"))
+    return {
+      rules: Object.fromEntries(
+        columns.filter((c) => !c.isFormula).map((c) => [c.id, "ignore"]),
+      ),
+      keys: [],
+      keyMode: "composite",
+      missing: true,
+      warnings: [],
+    };
+  const data = await api.fetchTable("RULES_CONFIG");
+  if (!data.col_name || !data.rule || !data.is_key)
+    throw new Error("RULES_CONFIG doit contenir col_name, rule et is_key.");
+  const rules = Object.create(null),
+    keys = [],
+    warnings = [];
+  const modes = new Set();
+  for (const row of tableRecords(data)) {
+    if (!row.col_name) continue;
+    const matches = columns.filter((c) => c.id === row.col_name);
+    const candidates = matches.length
+      ? matches
+      : columns.filter((c) =>
+          [c.id, c.label].some(
+            (v) => normalizeName(v) === normalizeName(row.col_name),
+          ),
         );
-        continue;
-      }
-      normalizedRules[norm] = { rule: data.rule, gristCol };
-    }
-  } else {
-    // Ancien format: { "Prenom": "overwrite", ... } ou {"Prénom": "overwrite", ...}
-    for (const [maybeGristOrLabel, rule] of Object.entries(rawRules || {})) {
-      const norm = normalizeName(maybeGristOrLabel);
-      const gristCol = normToGristCol[norm];
-      if (!gristCol) {
-        console.warn(
-          `Règle ignorée: colonne introuvable dans Grist pour "${maybeGristOrLabel}"`
-        );
-        continue;
-      }
-      normalizedRules[norm] = { rule, gristCol };
-    }
-  }
-
-  const uniqueKeyNorm = normalizeName(rawUniqueKey);
-  const uniqueKeyGristCol = normToGristCol[uniqueKeyNorm];
-  if (!uniqueKeyGristCol) {
-    console.error(
-      `La clé unique "${rawUniqueKey}" ne correspond à aucune colonne Grist.`
-    );
-    alert(
-      `Clé unique "${rawUniqueKey}" invalide (colonne inconnue dans Grist).`
-    );
-    return;
-  }
-
-  // 4) Déballer Excel
-  const header = excelData?.[0] || [];
-  const rows = (excelData || []).slice(1);
-
-  // DEBUG — Excel brut
-  console.group("DEBUG EXCEL BRUT");
-  console.log("Colonnes Excel :", header);
-  console.table(rows.slice(0, 10));
-  console.groupEnd();
-
-  // DEBUG — Normalisation Excel / Grist / Rules / Dictionnaire
-  console.group("DEBUG NORMALISATION");
-  console.table(
-    header.map((h) => ({ excelHeader: h, norm: normalizeName(h) }))
-  );
-  console.table(
-    gristCols.map((g) => ({
-      gristCol: g,
-      norm: normalizeName(g),
-      type: gristColTypes[g],
-    }))
-  );
-  console.table(
-    Object.entries(normalizedRules).map(([n, v]) => ({
-      norm: n,
-      gristCol: v.gristCol,
-      rule: v.rule,
-    }))
-  );
-  console.table(
-    Object.entries(normToGristCol).map(([n, g]) => ({ norm: n, gristCol: g }))
-  );
-  console.log("uniqueKey:", {
-    raw: rawUniqueKey,
-    norm: uniqueKeyNorm,
-    gristCol: uniqueKeyGristCol,
-  });
-  console.groupEnd();
-
-  // 5) Construire index Grist par clé unique (valeur brute, trim)
-  const gristData = getCurrentGristData();
-  const gristIndex = {};
-  for (const rec of gristData) {
-    const val = rec[uniqueKeyGristCol];
-    const keyStr = val === null || val === undefined ? "" : String(val).trim();
-    if (keyStr) gristIndex[keyStr] = rec;
-  }
-
-  // 6) Appliquer le mapping Excel→Grist pour construire des lignes normalisées
-  // mapping: { "Prénom" -> "Prenom", ... }
-  const actions = [];
-  const resume = [];
-
-  // Pre-calc : type Date par colonne (via nom Grist réel)
-  console.log("🔍 DEBUG - Schema Grist reçu:", gristColTypes);
-  const gristColIsDate = new Set(
-    gristCols.filter((c) => gristColTypes[c] === "Date")
-  );
-  console.log("📊 Colonnes de type Date détectées:", Array.from(gristColIsDate));
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const excelRowByNorm = Object.create(null);
-    header.forEach((col, idx) => {
-      excelRowByNorm[normalizeName(col)] = row[idx];
-    });
-
-    // Construire une ligne par colonnes grist normalisées -> valeurs Excel
-    const lineByNorm = Object.create(null);
-    for (const [excelCol, gristCol] of Object.entries(mapping || {})) {
-      if (!gristCol) continue;
-      const val = excelRowByNorm[normalizeName(excelCol)];
-      const gristColNorm = normalizeName(gristCol);
-
-      let finalVal = val;
-      if (gristColIsDate.has(gristCol)) {
-        console.log(`🔍 DEBUG - Traitement date pour colonne "${gristCol}":`, {
-          valeurOriginale: val,
-          typeValeur: typeof val,
-          estColonneDate: gristColIsDate.has(gristCol)
-        });
-        
-        const normalizedDate = normalizeDate(val);
-        console.log(`🔍 DEBUG - Résultat normalizeDate:`, normalizedDate);
-        
-        // Si normalizeDate retourne null, garder la valeur originale
-        // (cela évite les "01-01-1970" par défaut)
-        if (normalizedDate !== null) {
-          finalVal = normalizedDate;
-          console.log(`✅ Date normalisée: ${val} → ${normalizedDate}`);
-        } else {
-          console.log(`⚠️ normalizeDate a retourné null, garde valeur originale: ${val}`);
-        }
-      }
-      lineByNorm[gristColNorm] = finalVal;
-    }
-
-    // Clé unique
-    const keyValRaw = lineByNorm[uniqueKeyNorm];
-    const key =
-      keyValRaw === null || keyValRaw === undefined
-        ? ""
-        : String(keyValRaw).trim();
-    if (!key) {
-      resume.push(
-        `Ligne ${i + 1} : IGNORÉE (clé "${uniqueKeyGristCol}" vide)`
-      );
+    if (candidates.length !== 1) {
+      warnings.push(`Règle non résolue : ${row.col_name}.`);
       continue;
     }
-
-    const existing = gristIndex[key];
-
-    if (existing) {
-      // UPDATE
-      const updates = {};
-      let hasUpdate = false;
-
-      for (const [norm, { rule, gristCol }] of Object.entries(
-        normalizedRules
-      )) {
-        if (rule === "ignore" || rule === "match") continue;
-
-        const excelVal = lineByNorm[norm];
-        const gristVal = existing[gristCol];
-
-        console.log("DEBUG champ:", {
-          norm,
-          gristCol,
-          excelVal,
-          gristVal,
-          rule,
-        });
-
-        if (rule === "overwrite") {
-          if (
-            excelVal !== undefined &&
-            excelVal !== null &&
-            excelVal !== "" &&
-            !areEqual(excelVal, gristVal)
-          ) {
-            // Appliquer normalizeDate seulement si c'est une colonne de type Date
-            updates[gristCol] = gristColIsDate.has(gristCol) ? (normalizeDate(excelVal) || excelVal) : excelVal;
-            hasUpdate = true;
-          }
-        } else if (rule === "update_if_newer") {
-          if (excelVal) {
-            const exDate = new Date(excelVal);
-            const grDate = new Date(gristVal);
-            if (!isNaN(exDate) && (isNaN(grDate) || exDate > grDate)) {
-              // Appliquer normalizeDate seulement si c'est une colonne de type Date
-              updates[gristCol] = gristColIsDate.has(gristCol) ? (normalizeDate(excelVal) || excelVal) : excelVal;
-              hasUpdate = true;
-            }
-          }
-        } else if (rule === "fill_if_empty") {
-          if (
-            (gristVal === null || gristVal === undefined || gristVal === "") &&
-            excelVal !== null &&
-            excelVal !== undefined &&
-            excelVal !== ""
-          ) {
-            // Appliquer normalizeDate seulement si c'est une colonne de type Date
-            updates[gristCol] = gristColIsDate.has(gristCol) ? (normalizeDate(excelVal) || excelVal) : excelVal;
-            hasUpdate = true;
-          }
-        } else if (rule === "append_if_different") {
-          if (
-            excelVal !== null &&
-            excelVal !== undefined &&
-            excelVal !== "" &&
-            !areEqual(excelVal, gristVal)
-          ) {
-            const sep = gristVal ? " | " : "";
-            updates[gristCol] = (gristVal || "") + sep + excelVal;
-            hasUpdate = true;
-          }
-        }
-      }
-      if (hasUpdate) {
-        actions.push(["UpdateRecord", currentTableId, existing.id, updates]);
-        resume.push(`Ligne ${i + 1} : UPDATE → ${JSON.stringify(updates)}`);
-      } else {
-        resume.push(`Ligne ${i + 1} : IGNORÉ (aucun changement)`);
-      }
-    } else {
-      // ADD
-      const newRecord = {};
-      for (const [norm, { gristCol }] of Object.entries(normalizedRules)) {
-        // On insère uniquement les colonnes connues de Grist
-        if (norm in lineByNorm) {
-          const excelVal = lineByNorm[norm];
-          // Appliquer normalizeDate seulement si c'est une colonne de type Date
-          newRecord[gristCol] = gristColIsDate.has(gristCol) ? (normalizeDate(excelVal) || excelVal) : excelVal;
-        }
-      }
-      actions.push(["AddRecord", currentTableId, null, newRecord]);
-      resume.push(`Ligne ${i + 1} : ADD → ${JSON.stringify(newRecord)}`);
-    }
+    const column = candidates[0];
+    if (Object.hasOwn(rules, column.id))
+      throw new Error(`Plusieurs règles concernent ${column.label}.`);
+    rules[column.id] = String(row.rule ?? "").trim();
+    if (
+      ["1", "true", "vrai", "oui", "yes"].includes(
+        String(row.is_key).trim().toLowerCase(),
+      )
+    )
+      keys.push({ id: column.id, priority: Number(row.key_priority) || 999 });
+    if (row.key_mode) modes.add(row.key_mode);
   }
+  if (modes.size > 1)
+    throw new Error(
+      "RULES_CONFIG contient plusieurs modes de clé contradictoires.",
+    );
+  keys.sort((a, b) => a.priority - b.priority);
+  return {
+    rules,
+    keys: keys.map((k) => k.id),
+    keyMode: [...modes][0] || "composite",
+    missing: false,
+    warnings,
+  };
+}
 
-  // 7) Debug actions & simulation
-  console.group("DEBUG TABLE AVANT IMPORT");
-  console.table(
-    actions.map(([type, , id, payload]) => ({ action: type, id, ...payload }))
+export async function fetchReferences(api, columns, targetIds) {
+  const refs = {},
+    cache = new Map();
+  for (const col of columns.filter(
+    (c) => targetIds.includes(c.id) && /^(Ref|RefList):/.test(c.type),
+  )) {
+    const tableId = col.type.split(":")[1];
+    if (!cache.has(tableId))
+      cache.set(
+        tableId,
+        Promise.all([api.fetchTable(tableId), fetchSchema(api, tableId)]),
+      );
+    let data, refCols;
+    try {
+      [data, refCols] = await cache.get(tableId);
+    } catch {
+      continue;
+    } // Conversion reports inaccessible references only if used.
+    const visibleCol = refCols.find((c) => c.ref === col.visibleCol)?.id;
+    const labels = Object.create(null);
+    if (visibleCol)
+      for (const row of tableRecords(data)) {
+        const label = String(row[visibleCol] ?? "").trim();
+        if (label) labels[label] = [...(labels[label] ?? []), row.id];
+      }
+    refs[col.id] = { ids: data.id, visibleCol, labels };
+  }
+  return refs;
+}
+
+export async function prepareImport(api, input) {
+  const columns = await fetchSchema(api, input.tableId);
+  const records = tableRecords(await api.fetchTable(input.tableId)); // Entire table, independent of widget filters.
+  const targets = [
+    ...new Set(input.sheets.flatMap((s) => Object.values(s.mapping))),
+  ];
+  const references = await fetchReferences(
+    api,
+    columns,
+    targets.filter(
+      (id) => input.keys.includes(id) || Object.hasOwn(input.rules, id),
+    ),
   );
-  console.groupEnd();
-
-  if (actions.length === 0) {
-    console.log("Aucun changement à appliquer.");
-    console.log("Résumé final :", resume);
-    return resume;
-  }
-
-  const simulatedTable = [...gristData.map((r) => ({ ...r }))];
-  for (const [kind, , rowId, payload] of actions) {
-    if (kind === "UpdateRecord") {
-      const r = simulatedTable.find((rr) => rr.id === rowId);
-      if (r) Object.assign(r, payload);
-    } else if (kind === "AddRecord") {
-      simulatedTable.push({
-        id: `tmp_${Math.random().toString(36).slice(2, 8)}`,
-        ...payload,
-      });
-    }
-  }
-  console.group("DEBUG TABLE APRES IMPORT (simulation)");
-  console.table(simulatedTable);
-  console.groupEnd();
-
-  // 8) Apply
-  await grist.docApi.applyUserActions(actions);
-  console.log(`${actions.length} action(s) envoyée(s) à Grist`);
-  console.log("Résumé final :", resume);
-  return resume;
+  const plan = buildImportPlan({ ...input, columns, records, references });
+  return {
+    ...plan,
+    columns,
+    input: structuredClone(input),
+    snapshot: JSON.stringify({ columns, records, references }),
+  };
 }
 
-// =========================
-// Helpers
-// =========================
-function areEqual(a, b) {
-  // comparaison douce pour éviter les faux positifs
-  if (a == null && b == null) return true;
-  if (a == null || b == null) return false;
-
-  // Dates → forcer comparaison en YYYY-MM-DD
-  const aDate = normalizeDate(a);
-  const bDate = normalizeDate(b);
-  if (aDate && bDate && isValidDateString(aDate) && isValidDateString(bDate)) {
-    return aDate === bDate;
+export async function applyImport(api, plan) {
+  if (plan.errors.length)
+    throw new Error("Corriger les erreurs avant d’importer.");
+  const fresh = await prepareImport(api, plan.input);
+  if (fresh.snapshot !== plan.snapshot || !equal(fresh.changes, plan.changes)) {
+    throw new Error(
+      "La table ou ses références ont changé depuis la vérification. Relancer la vérification.",
+    );
   }
-
-  if (typeof a === "number" || typeof b === "number") {
-    return Number(a) === Number(b);
+  if (!plan.changes.length) return null;
+  const actions = plan.changes.map((change) => [
+    change.kind === "add" ? "AddRecord" : "UpdateRecord",
+    plan.tableId,
+    change.kind === "add" ? null : change.id,
+    change.after,
+  ]);
+  // One Grist transaction: an action error rolls back the whole import.
+  const response = await api.applyUserActions(actions);
+  const undo = {
+    tableId: plan.tableId,
+    changes: plan.changes.map((change, i) => ({
+      ...change,
+      id: change.kind === "add" ? response.retValues?.[i] : change.id,
+    })),
+  };
+  // Never report a failed import after a successful write merely because this read fails.
+  try {
+    const after = tableRecords(await api.fetchTable(plan.tableId));
+    const writable = plan.columns.filter((c) => !c.isFormula).map((c) => c.id);
+    for (const change of undo.changes) {
+      const row = after.find((r) => r.id === change.id);
+      if (!row) throw new Error("Ligne créée introuvable.");
+      if (
+        Object.entries(change.after).some(
+          ([key, value]) => !equal(row[key], value),
+        )
+      )
+        throw new Error("Une valeur importée a changé.");
+      change.expected = Object.fromEntries(
+        writable.map((k) => [k, row[k] ?? null]),
+      );
+    }
+    undo.columns = writable;
+  } catch {
+    undo.unavailable = true;
   }
-  return String(a).trim() === String(b).trim();
+  return undo;
 }
 
-function normalizeDate(value) {
-  // Si la valeur est null, undefined ou vide, ne pas traiter comme date
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-  
-  if (typeof value === "number") {
-    // Vérifier si c'est un code de date Excel valide (entre 1 et 2958465)
-    if (value < 1 || value > 2958465) {
-      console.warn(`Valeur numérique ${value} ne semble pas être un code de date Excel valide`);
-      return null;
+export async function rollbackImport(api, undo) {
+  if (!undo || undo.unavailable)
+    throw new Error(
+      "Annulation locale indisponible. Utiliser l’historique Grist.",
+    );
+  const records = tableRecords(await api.fetchTable(undo.tableId));
+  const index = new Map(records.map((r) => [r.id, r]));
+  for (const change of undo.changes) {
+    const row = index.get(change.id);
+    if (
+      !row ||
+      undo.columns.some((k) => !equal(row[k] ?? null, change.expected[k]))
+    ) {
+      throw new Error(
+        "Une ligne importée a été modifiée ou supprimée depuis l’import. Annulation bloquée ; consulter l’historique Grist.",
+      );
     }
-    
-    const date = XLSX.SSF.parse_date_code(value);
-    if (!date) return null;
-    return new Date(Date.UTC(date.y, date.m - 1, date.d))
-      .toISOString()
-      .split("T")[0]; // YYYY-MM-DD
   }
-  if (typeof value === "string") {
-    const s = value.trim();
-    if (!s) return null;
-    
-    // formats acceptés
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // déjà bon
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("/");
-      return new Date(`${y}-${m}-${d}`).toISOString().split("T")[0];
-    }
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-      const [d, m, y] = s.split("/");
-      return new Date(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`).toISOString().split("T")[0];
-    }
-    return null;
-  }
-  if (value instanceof Date && !isNaN(value)) {
-    return value.toISOString().split("T")[0];
-  }
-  return null;
+  await api.applyUserActions(
+    [...undo.changes]
+      .reverse()
+      .map((change) =>
+        change.kind === "add"
+          ? ["RemoveRecord", undo.tableId, change.id]
+          : ["UpdateRecord", undo.tableId, change.id, change.before],
+      ),
+  );
 }
 
-function isValidDateString(str) {
-  return typeof str === "string" && /^\d{4}-\d{2}-\d{2}$/.test(str);
+/** Save only on explicit UI action; existing documents are never migrated at startup. */
+export async function saveRules(api, columns, config) {
+  if (!config.keys.length)
+    throw new Error("Sélectionner une clé avant d’enregistrer.");
+  const tables = await api.listTables(),
+    actions = [];
+  const fields = {
+    col_name: "Text",
+    rule: "Text",
+    is_key: "Bool",
+    key_mode: "Text",
+    key_priority: "Int",
+  };
+  const exists = tables.includes("RULES_CONFIG");
+  const data = exists ? await api.fetchTable("RULES_CONFIG") : { id: [] };
+  if (!exists)
+    actions.push([
+      "AddTable",
+      "RULES_CONFIG",
+      Object.entries(fields).map(([id, type]) => ({ id, type })),
+    ]);
+  else
+    for (const [id, type] of Object.entries(fields))
+      if (!data[id]) actions.push(["AddColumn", "RULES_CONFIG", id, { type }]);
+  const oldRows = tableRecords(data);
+  const usedRows = new Set();
+  for (const col of columns) {
+    const exact = oldRows.filter((r) => r.col_name === col.id);
+    const matches = exact.length
+      ? exact
+      : oldRows.filter(
+          (r) =>
+            !columns.some((c) => c.id === r.col_name) &&
+            (normalizeName(r.col_name) === normalizeName(col.label) ||
+              normalizeName(r.col_name) === normalizeName(col.id)),
+        );
+    if (matches.length > 1)
+      throw new Error(
+        `Règles en double pour ${col.label} : corriger RULES_CONFIG.`,
+      );
+    const row = matches[0];
+    if (row && usedRows.has(row.id))
+      throw new Error(
+        "Une règle existante correspond à plusieurs colonnes. Corriger les libellés avant d’enregistrer.",
+      );
+    if (row) usedRows.add(row.id);
+    if (col.isFormula && !row) continue;
+    const values = {
+      col_name: col.id,
+      rule: col.isFormula ? "ignore" : (config.rules[col.id] ?? "ignore"),
+      is_key: !col.isFormula && config.keys.includes(col.id),
+      key_mode: config.keyMode,
+      key_priority: config.keys.indexOf(col.id) + 1,
+    };
+    actions.push([
+      row ? "UpdateRecord" : "AddRecord",
+      "RULES_CONFIG",
+      row?.id ?? null,
+      values,
+    ]);
+  }
+  await api.applyUserActions(actions);
 }
