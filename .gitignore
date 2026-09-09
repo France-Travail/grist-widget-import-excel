@@ -36,3 +36,19 @@ dist/
 build/
 
 /todo
+
+# Private local context, browser sessions and generated evidence
+.env
+.env.*
+!.env.example
+*.har
+*.grist-journal
+playwright-report/
+test-results/
+.local/
+
+# Local Python environments are not application sources
+.venv/
+venv/
+__pycache__/
+*.pyc
