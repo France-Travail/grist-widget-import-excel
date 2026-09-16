@@ -498,14 +498,12 @@ test("Les dates Excel sont lisibles dans l’aperçu et restent correctement con
       new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" })),
     );
   });
-  await page
-    .locator("#file-input")
-    .setInputFiles({
-      name: "synthetic-date.xlsx",
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      buffer: Buffer.from(bytes),
-    });
+  await page.locator("#file-input").setInputFiles({
+    name: "synthetic-date.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from(bytes),
+  });
   await page.locator("#source-preview summary").click();
   await expect(page.locator("#preview-container")).toContainText("08/07/2026");
   await expect(page.locator("#preview-container")).not.toContainText("46211");
@@ -516,4 +514,133 @@ test("Les dates Excel sont lisibles dans l’aperçu et restent correctement con
   expect(await page.evaluate(() => testData.Test.Date)).toEqual([
     Date.UTC(2026, 6, 8) / 1000,
   ]);
+});
+
+test("Doublons : comparaison, choix de la date récente, import, rapport et annulation", async ({
+  page,
+}) => {
+  await upload(page, [
+    [
+      "Fictif",
+      [
+        ["Identifiant", "Date", "Actif"],
+        ["A", "10/12/2025", 0],
+        ["A", "11/12/2025", 1],
+        ["B", "12/12/2025", 1],
+      ],
+    ],
+  ]);
+  await validate(page);
+  await expect(page.locator(".duplicate-group")).toHaveCount(1);
+  await expect(page.locator(".duplicate-group")).toContainText(
+    "Champs différents : Date, Actif",
+  );
+  await expect(page.locator("#apply")).toBeDisabled();
+  expect(await page.evaluate(() => testCalls.length)).toBe(0);
+  await page
+    .getByLabel("Action pour le groupe Fictif ligne 2", { exact: true })
+    .selectOption("latest:Date");
+  await expect(page.locator("#apply")).toBeEnabled();
+  await expect(page.locator("#plan")).toContainText("1 ligne(s) écartée(s)");
+  expect(await page.evaluate(() => testCalls.length)).toBe(0);
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#report").click();
+  const download = await downloadPromise;
+  const stream = await download.createReadStream();
+  let csv = "";
+  for await (const chunk of stream) csv += chunk.toString();
+  expect(csv).toContain("Écartée");
+  expect(csv).toContain("conservation de Fictif, ligne 3");
+  await page.locator("#apply").click();
+  await expect(page.locator("#status")).toContainText("Import terminé");
+  expect(await page.evaluate(() => testData.Test.Key)).toEqual(["A", "B"]);
+  expect(await page.evaluate(() => testData.Test.Flag)).toEqual([true, true]);
+  expect(await page.evaluate(() => testData.Test.Date[0])).toBe(
+    Date.UTC(2025, 11, 11) / 1000,
+  );
+  await page.locator("#undo").click();
+  await expect(page.locator("#status")).toContainText("annulé");
+  expect(await page.evaluate(() => testData.Test.id)).toEqual([]);
+});
+
+test("Doublons : égalité signalée, sélection manuelle et réinitialisation sur nouveau fichier", async ({
+  page,
+}) => {
+  await upload(page, [
+    [
+      "Fictif",
+      [
+        ["Identifiant", "Date", "Actif"],
+        ["A", "10/12/2025", 0],
+        ["A", "10/12/2025", 1],
+      ],
+    ],
+  ]);
+  await validate(page);
+  await page
+    .getByLabel("Date pour traiter tous les doublons", { exact: true })
+    .selectOption("Date");
+  await page
+    .getByRole("button", {
+      name: "Garder la plus récente dans chaque groupe",
+      exact: true,
+    })
+    .click();
+  await expect(page.locator(".duplicate-group")).toContainText(
+    "même date la plus récente",
+  );
+  await expect(page.locator("#apply")).toBeDisabled();
+  await page
+    .getByLabel("Action pour le groupe Fictif ligne 2", { exact: true })
+    .selectOption("row:0:1");
+  await expect(page.locator("#apply")).toBeEnabled();
+  await upload(page, [
+    [
+      "Fictif",
+      [
+        ["Identifiant", "Date", "Actif"],
+        ["A", "10/12/2025", 0],
+        ["A", "10/12/2025", 1],
+      ],
+    ],
+  ]);
+  await validate(page);
+  await expect(page.locator("#apply")).toBeDisabled();
+  await expect(
+    page.getByLabel("Action pour le groupe Fictif ligne 2", { exact: true }),
+  ).toHaveValue("");
+});
+
+test("Doublons : exclusion d’un groupe sur mobile sans perte des autres lignes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await upload(page, [
+    [
+      "Fictif",
+      [
+        ["Identifiant", "Date"],
+        ["A", "10/12/2025"],
+        ["A", "11/12/2025"],
+        ["B", "12/12/2025"],
+      ],
+    ],
+  ]);
+  await validate(page);
+  await page
+    .getByLabel("Action pour le groupe Fictif ligne 2", { exact: true })
+    .selectOption("skip");
+  await expect(page.locator("#apply")).toBeEnabled();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "/tmp/widget-duplicate-mobile.png",
+    fullPage: true,
+  });
+  await page.locator("#apply").click();
+  await expect(page.locator("#status")).toContainText("Import terminé");
+  expect(await page.evaluate(() => testData.Test.Key)).toEqual(["B"]);
 });

@@ -38,7 +38,210 @@ export function dataTable(headers, rows) {
     ]),
   ]);
 }
-export function renderPlan(plan, container, { applied = false } = {}) {
+export function renderDuplicateChoices(plan, container, onResolve, onEditKeys) {
+  if (!plan.duplicateGroups?.length) return;
+  const groups = plan.duplicateGroups;
+  const section = el("section", { class: "duplicate-review" }, [
+    el("h3", { text: "Doublons du fichier" }),
+    el("p", {
+      text: `${groups.length} groupe(s) de lignes désignent le même identifiant ou la même ligne Grist. Choisissez quelle ligne complète conserver, ou écartez le groupe de cet import. Les autres lignes du fichier pourront être importées.`,
+    }),
+    el("p", {
+      class: "muted",
+      text: "Si ces lignes représentent plusieurs décisions à conserver séparément, ajoutez une colonne d’identification dans les paramètres (par exemple un numéro de décision). Changer les clés change aussi la façon de retrouver les lignes existantes.",
+    }),
+  ]);
+  if (onEditKeys)
+    section.append(
+      el("button", {
+        class: "link-button",
+        text: "Revoir les colonnes d’identification",
+        onclick: onEditKeys,
+      }),
+    );
+  if (onResolve) {
+    const dates = (plan.columns || []).filter(
+      (c) => c.type === "Date" || c.type.startsWith("DateTime:"),
+    );
+    if (dates.length) {
+      const select = el(
+        "select",
+        { "aria-label": "Date pour traiter tous les doublons" },
+        [
+          option("", "Choisir une date de référence…"),
+          ...dates.map((c) => option(c.id, c.label)),
+        ],
+      );
+      section.append(
+        el("div", { class: "actions" }, [
+          select,
+          el("button", {
+            class: "secondary",
+            text: "Garder la plus récente dans chaque groupe",
+            onclick: () => {
+              if (select.value)
+                onResolve(
+                  Object.fromEntries(
+                    groups.map((g) => [g.id, "latest:" + select.value]),
+                  ),
+                );
+            },
+          }),
+        ]),
+      );
+      section.append(
+        el("p", {
+          class: "muted",
+          text: "En cas d’égalité ou de date manquante, le groupe reste à traiter. La ligne entière est retenue, puis vos règles de mise à jour s’appliquent.",
+        }),
+      );
+    }
+  }
+  let shown = 0;
+  const list = el("div");
+  section.append(list);
+  const more = el("button", {
+    class: "secondary",
+    text: "Afficher les groupes suivants",
+  });
+  const appendGroups = () => {
+    for (const group of groups.slice(shown, shown + 20)) {
+      const card = el(
+        "details",
+        { class: "change-card duplicate-group", open: "" },
+        [
+          el("summary", {
+            text: `${group.resolved ? "Choix enregistré" : "À traiter"} · ${group.rows.length} lignes · ${group.rows[0].sheet}, ligne ${group.rows[0].row}`,
+          }),
+          el("p", {
+            text: group.differing.length
+              ? `Champs différents : ${group.differing.join(", ")}.`
+              : "Les valeurs affichées sont identiques. Vous pouvez conserver une seule ligne.",
+          }),
+          dataTable(
+            ["Feuille", "Ligne Excel", ...group.fields.map((c) => c.label)],
+            group.rows
+              .slice(0, 100)
+              .map((r) => [
+                r.sheet,
+                r.row,
+                ...group.fields.map((c) => r.values[c.id]),
+              ]),
+          ),
+        ],
+      );
+      if (group.rows.length > 100)
+        card.append(
+          el("p", {
+            text: "Les 100 premières lignes sont affichées. Toutes les lignes restent prises en compte pour le choix de la date la plus récente.",
+          }),
+        );
+      if (group.problem)
+        card.append(el("p", { class: "notice error", text: group.problem }));
+      if (onResolve) {
+        const select = el(
+          "select",
+          {
+            "aria-label": `Action pour le groupe ${group.rows[0].sheet} ligne ${group.rows[0].row}`,
+          },
+          [
+            option("", "Choisir une action…"),
+            option("skip", "Écarter toutes les lignes de ce groupe"),
+            ...group.fields
+              .filter(
+                (c) => c.type === "Date" || c.type.startsWith("DateTime:"),
+              )
+              .map((c) =>
+                option(
+                  "latest:" + c.id,
+                  `Garder la ligne avec ${c.label} la plus récente`,
+                ),
+              ),
+            ...group.rows
+              .slice(0, 100)
+              .map((r) =>
+                option("row:" + r.id, `Garder ${r.sheet} · ligne ${r.row}`),
+              ),
+          ],
+        );
+        if (
+          group.choice.startsWith("row:") &&
+          ![...select.options].some((o) => o.value === group.choice)
+        ) {
+          const selected = group.rows.find((r) => r.id === group.selected);
+          if (selected)
+            select.append(
+              option(
+                group.choice,
+                `Garder ${selected.sheet} · ligne ${selected.row}`,
+              ),
+            );
+        }
+        select.value = group.choice;
+        select.onchange = () => onResolve({ [group.id]: select.value });
+        card.append(select);
+        if (group.rows.length > 100) {
+          const sheetSelect = el(
+            "select",
+            { "aria-label": "Feuille de la ligne à conserver" },
+            [...new Set(group.rows.map((r) => r.sheet))].map((s) =>
+              option(s, s),
+            ),
+          );
+          const rowInput = el("input", {
+            type: "number",
+            min: "1",
+            "aria-label": "Numéro Excel de la ligne à conserver",
+          });
+          card.append(
+            el("div", { class: "actions" }, [
+              sheetSelect,
+              rowInput,
+              el("button", {
+                class: "secondary",
+                text: "Conserver cette ligne",
+                onclick: () => {
+                  rowInput.setCustomValidity("");
+                  const row = group.rows.find(
+                    (r) =>
+                      r.sheet === sheetSelect.value &&
+                      r.row === Number(rowInput.value),
+                  );
+                  if (row) onResolve({ [group.id]: "row:" + row.id });
+                  else {
+                    rowInput.setCustomValidity(
+                      "Cette ligne ne fait pas partie du groupe.",
+                    );
+                    rowInput.reportValidity();
+                  }
+                },
+              }),
+            ]),
+          );
+        }
+      } else
+        card.append(
+          el("p", {
+            text: group.selected
+              ? `Ligne retenue : ${group.rows.find((r) => r.id === group.selected)?.sheet} · ligne ${group.rows.find((r) => r.id === group.selected)?.row}.`
+              : "Groupe écarté de l’import.",
+          }),
+        );
+      list.append(card);
+    }
+    shown += 20;
+    more.hidden = shown >= groups.length;
+  };
+  more.onclick = appendGroups;
+  appendGroups();
+  section.append(more);
+  container.append(section);
+}
+export function renderPlan(
+  plan,
+  container,
+  { applied = false, onResolve, onEditKeys } = {},
+) {
   container.replaceChildren();
   const columns = Object.fromEntries(plan.columns.map((c) => [c.id, c]));
   const label = (id) => columns[id]?.label || id;
@@ -78,6 +281,19 @@ export function renderPlan(plan, container, { applied = false } = {}) {
       ),
     ),
   );
+  renderDuplicateChoices(
+    plan,
+    container,
+    applied ? null : onResolve,
+    applied ? null : onEditKeys,
+  );
+  if (plan.stats.excluded)
+    container.append(
+      el("p", {
+        class: "notice",
+        text: `${plan.stats.excluded} ligne(s) écartée(s) par vos choix. ${applied ? "Elles n’ont pas été importées" : "Elles ne seront pas importées"} ; le rapport les répertorie.`,
+      }),
+    );
   if (plan.errors.length) {
     container.append(
       el("div", { class: "notice error", role: "alert" }, [
@@ -85,20 +301,18 @@ export function renderPlan(plan, container, { applied = false } = {}) {
         el("p", {
           text: "Retrouvez la feuille, la ligne et la colonne concernées ci-dessous. Après correction, relancez la vérification.",
         }),
-        ...plan.errors
-          .slice(0, 50)
-          .map((issue) =>
-            el("div", { class: "issue" }, [
-              el("strong", {
-                text: location(issue, label) || "Paramètres de l’import",
-              }),
-              el("p", { text: issue.message }),
-              el("p", {
-                class: "issue-help",
-                text: correctionHint(issue.message),
-              }),
-            ]),
-          ),
+        ...plan.errors.slice(0, 50).map((issue) =>
+          el("div", { class: "issue" }, [
+            el("strong", {
+              text: location(issue, label) || "Paramètres de l’import",
+            }),
+            el("p", { text: issue.message }),
+            el("p", {
+              class: "issue-help",
+              text: correctionHint(issue.message),
+            }),
+          ]),
+        ),
         ...(plan.errors.length > 50
           ? [
               el("p", {
@@ -118,13 +332,11 @@ export function renderPlan(plan, container, { applied = false } = {}) {
         el(
           "ul",
           {},
-          plan.warnings
-            .slice(0, 100)
-            .map((issue) =>
-              el("li", {
-                text: `${location(issue, label)} : ${issue.message}`,
-              }),
-            ),
+          plan.warnings.slice(0, 100).map((issue) =>
+            el("li", {
+              text: `${location(issue, label)} : ${issue.message}`,
+            }),
+          ),
         ),
         ...(plan.warnings.length > 100
           ? [
@@ -135,7 +347,9 @@ export function renderPlan(plan, container, { applied = false } = {}) {
           : []),
       ]),
     );
-  const changed = plan.details.filter((d) => d.status !== "Inchangée");
+  const changed = plan.details.filter((d) =>
+    ["Ajout", "Modification"].includes(d.status),
+  );
   if (changed.length) {
     container.append(
       el("h3", {
@@ -230,7 +444,7 @@ export function downloadReport(plan) {
       d.sheet,
       d.row,
       d.status,
-      Object.keys(d.after).join(", "),
+      d.message || Object.keys(d.after).join(", "),
     ]),
   );
   rows.push(

@@ -1,3 +1,4 @@
+import { resolveSourceDuplicates } from "./duplicateService.js";
 import { normalizeName, isEmpty, equal } from "./utils.js";
 import { parseDate } from "./dateService.js";
 
@@ -163,7 +164,17 @@ function nextValue(rule, incoming, existing, type) {
 }
 
 /** Pure preparation: no Grist calls, no writes, no logging of workbook contents. */
-export function buildImportPlan({
+export function buildImportPlan(input) {
+  const duplicates = resolveSourceDuplicates(input, convertValue);
+  const plan = buildBasePlan({ ...input, sheets: duplicates.sheets });
+  plan.duplicateGroups = duplicates.groups;
+  plan.errors.push(...duplicates.errors);
+  plan.details.push(...duplicates.excluded);
+  plan.stats.excluded = duplicates.excluded.length;
+  plan.stats.errors = plan.errors.length;
+  return plan;
+}
+function buildBasePlan({
   tableId,
   sheets,
   columns,

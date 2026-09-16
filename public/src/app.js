@@ -56,6 +56,7 @@ export async function start({ version, revision }) {
     generation = 0;
   const api = grist.docApi;
   const sessionMappings = new Map();
+  let duplicateResolutions = {};
   function rememberMapping(sheet, header, target) {
     sheet.mapping[header] = target;
     if (!sessionMappings.has(tableId)) sessionMappings.set(tableId, new Map());
@@ -69,7 +70,8 @@ export async function start({ version, revision }) {
     $("status").className = `notice ${error ? "error" : "success"}`;
     $("status").setAttribute("role", error ? "alert" : "status");
   }
-  function invalidate() {
+  function invalidate(keepDuplicateChoices = false) {
+    if (!keepDuplicateChoices) duplicateResolutions = {};
     plan = null;
     $("plan").replaceChildren();
     $("apply").disabled = true;
@@ -392,39 +394,51 @@ export async function start({ version, revision }) {
   $("refresh").onclick = () => {
     if (tableId) run(() => loadTable(tableId));
   };
-  $("validate").onclick = () =>
-    run(async () => {
-      invalidate();
-      status("Vérification des données et des références…");
-      const selected = sheets.filter((s) => s.selected);
-      if (selected.some((s) => s.error))
-        throw new Error("Corriger les erreurs des feuilles sélectionnées.");
-      const input = {
-        tableId,
-        sheets: selected,
-        rules: config.rules,
-        keys: config.keys,
-        keyMode: config.keyMode,
-      };
-      const prepared = await prepareImport(api, input);
-      if (input.tableId !== tableId)
-        throw new Error("La table cible a changé. Relancer la vérification.");
-      plan = prepared;
-      renderPlan(plan, $("plan"));
-      $("report").hidden = false;
-      $("report").onclick = () => downloadReport(prepared);
-      $("apply").disabled = !!plan.errors.length || !plan.changes.length;
-      $("apply").textContent =
-        `Confirmer l’import de ${plan.changes.length} ligne${plan.changes.length > 1 ? "s" : ""}`;
-      status(
-        plan.errors.length
-          ? "Corrigez les erreurs signalées avant de continuer."
-          : plan.changes.length
-            ? "Vérification terminée. Contrôlez l’aperçu avant de lancer l’import."
-            : "Aucun changement à appliquer avec ces correspondances et ces règles.",
-        !!plan.errors.length,
-      );
+  async function validateImport() {
+    invalidate(true);
+    status("Vérification des données et des références…");
+    const selected = sheets.filter((s) => s.selected);
+    if (selected.some((s) => s.error))
+      throw new Error("Corriger les erreurs des feuilles sélectionnées.");
+    const input = {
+      tableId,
+      sheets: selected,
+      rules: config.rules,
+      keys: config.keys,
+      keyMode: config.keyMode,
+      duplicateResolutions,
+    };
+    const prepared = await prepareImport(api, input);
+    if (input.tableId !== tableId)
+      throw new Error("La table cible a changé. Relancer la vérification.");
+    plan = prepared;
+    renderPlan(plan, $("plan"), {
+      onEditKeys: () => {
+        $("settings").open = true;
+        $("settings").scrollIntoView({ block: "center" });
+        $("key-mode").focus();
+      },
+      onResolve: (choices) =>
+        run(async () => {
+          duplicateResolutions = { ...duplicateResolutions, ...choices };
+          await validateImport();
+        }),
     });
+    $("report").hidden = false;
+    $("report").onclick = () => downloadReport(prepared);
+    $("apply").disabled = !!plan.errors.length || !plan.changes.length;
+    $("apply").textContent =
+      `Confirmer l’import de ${plan.changes.length} ligne${plan.changes.length > 1 ? "s" : ""}`;
+    status(
+      plan.errors.length
+        ? "Corrigez les erreurs signalées avant de continuer."
+        : plan.changes.length
+          ? "Vérification terminée. Contrôlez l’aperçu avant de lancer l’import."
+          : "Aucun changement à appliquer avec ces correspondances et ces règles.",
+      !!plan.errors.length,
+    );
+  }
+  $("validate").onclick = () => run(validateImport);
   $("apply").onclick = () =>
     run(async () => {
       if (!plan || plan.tableId !== tableId)
