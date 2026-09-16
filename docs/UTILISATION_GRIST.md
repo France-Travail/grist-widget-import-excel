@@ -16,7 +16,21 @@
    pour l’import courant et persiste la configuration partagée dans `RULES_CONFIG`.
 8. Cliquer sur **Vérifier l’import**. Aucune donnée n’est écrite à ce stade. Les erreurs
    doivent être corrigées ; l’aperçu montre les valeurs avant et après.
-9. Cliquer sur **Importer les changements**, puis contrôler le résultat dans Grist.
+9. Si des **Doublons du fichier** sont signalés, comparer les lignes du groupe et
+   choisir une ligne complète, la ligne avec la date la plus récente, ou écarter le
+   groupe. Le bouton commun applique le choix de date à tous les groupes ; les dates
+   égales, vides ou invalides restent à traiter manuellement. Rien n’est écrit lors
+   de ces choix : le widget recalcule l’aperçu.
+10. Confirmer l’import, puis contrôler le résultat dans Grist. Le rapport indique
+    les lignes écartées et la ligne retenue à leur place.
+
+Les choix de doublons concernent uniquement cet import et sont réinitialisés lors
+d’un changement de fichier, de correspondance, de règle ou de clé. Ils ne modifient
+pas `RULES_CONFIG`. La ligne retenue est traitée selon les règles de mise à jour
+habituelles ; le widget ne fusionne pas les champs de plusieurs lignes Excel.
+Si plusieurs décisions doivent être conservées, utiliser une clé composée adaptée
+(par exemple dossier et numéro de décision), en vérifiant son effet sur les lignes
+existantes. Plusieurs lignes Grist pour une même clé restent une ambiguïté bloquante.
 
 Pour remplacer des cases à cocher, choisir **Remplacer si renseigné**, pas **Garder la
 date la plus récente**. Pour préserver les zéros d’un identifiant, sa colonne Grist

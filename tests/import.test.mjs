@@ -344,3 +344,180 @@ test("Ignore à la création convertit aussi une référence configurée", () =>
   assert.deepEqual(result.errors, []);
   assert.equal(result.changes[0].after.Note, 7);
 });
+
+test("Doublons : aucun membre retenu avant choix, ligne complète choisie et exclusions tracées", () => {
+  const args = input([
+    ["A", "10/12/2025", 0, "ancien"],
+    ["A", "11/12/2025", 1, "nouveau"],
+    ["B", "12/12/2025", 1],
+  ]);
+  const pending = buildImportPlan(args);
+  assert.equal(pending.duplicateGroups.length, 1);
+  assert.equal(pending.stats.added, 1);
+  const group = pending.duplicateGroups[0];
+  const plan = buildImportPlan({
+    ...args,
+    duplicateResolutions: { [group.id]: "row:" + group.rows[1].id },
+  });
+  assert.equal(plan.errors.length, 0);
+  assert.equal(plan.stats.added, 2);
+  assert.equal(plan.stats.excluded, 1);
+  assert.equal(
+    plan.changes.find((c) => c.after.Identifier === "A").after.Note,
+    "nouveau",
+  );
+  assert.equal(plan.details.find((d) => d.status === "Écartée").row, 2);
+  assert.match(
+    plan.details.find((d) => d.status === "Écartée").message,
+    /ligne 3/,
+  );
+});
+
+test("Doublons : date la plus récente sur plusieurs feuilles et calendriers, sans mutation du fichier", () => {
+  const args = input([["A", 46001, 0]]);
+  args.sheets.push({
+    ...args.sheets[0],
+    name: "Seconde",
+    rows: [["A", 44540, 1]],
+    date1904: true,
+    rowNumbers: [17],
+  });
+  const snapshot = JSON.stringify(args);
+  const group = buildImportPlan(args).duplicateGroups[0];
+  const plan = buildImportPlan({
+    ...args,
+    duplicateResolutions: { [group.id]: "latest:Date" },
+  });
+  assert.equal(plan.errors.length, 0);
+  assert.equal(plan.stats.added, 1);
+  assert.equal(plan.changes[0].sheet, "Seconde");
+  assert.equal(plan.changes[0].row, 17);
+  assert.equal(plan.changes[0].after.Active, true);
+  assert.equal(JSON.stringify(args), snapshot);
+});
+
+test("Doublons : égalité, date invalide ou manquante restent à résoudre", () => {
+  for (const dates of [
+    ["10/12/2025", "10/12/2025"],
+    ["10/12/2025", ""],
+    ["10/12/2025", "31/02/2025"],
+  ]) {
+    const args = input(dates.map((d) => ["A", d]));
+    const group = buildImportPlan(args).duplicateGroups[0];
+    const plan = buildImportPlan({
+      ...args,
+      duplicateResolutions: { [group.id]: "latest:Date" },
+    });
+    assert.equal(plan.stats.added, 0);
+    assert.equal(plan.errors.length, 1);
+    assert.equal(plan.duplicateGroups[0].resolved, false);
+  }
+});
+
+test("Doublons : écarter un groupe autorise le reste, les choix invalides ne débloquent rien", () => {
+  const args = input([["A"], ["A"], ["B"]]);
+  const group = buildImportPlan(args).duplicateGroups[0];
+  const plan = buildImportPlan({
+    ...args,
+    duplicateResolutions: { [group.id]: "skip" },
+  });
+  assert.equal(plan.errors.length, 0);
+  assert.equal(plan.stats.excluded, 2);
+  assert.equal(plan.changes[0].after.Identifier, "B");
+  for (const choice of ["row:unknown", "latest:Active", "unknown"])
+    assert.equal(
+      buildImportPlan({ ...args, duplicateResolutions: { [group.id]: choice } })
+        .errors.length,
+      1,
+    );
+});
+
+test("Doublons : les règles existantes s’appliquent après le choix de ligne", () => {
+  const args = input(
+    [
+      ["A", "10/12/2025", 0],
+      ["A", "11/12/2025", 1],
+    ],
+    {
+      records: [{ id: 5, Identifier: "A", Date: 1765497600, Active: false }],
+      rules: {
+        Identifier: "match",
+        Date: "update_if_newer",
+        Active: "overwrite",
+      },
+    },
+  );
+  const group = buildImportPlan(args).duplicateGroups[0];
+  const plan = buildImportPlan({
+    ...args,
+    duplicateResolutions: { [group.id]: "latest:Date" },
+  });
+  assert.equal(plan.errors.length, 0);
+  assert.deepEqual(plan.changes[0].after, { Active: true });
+});
+
+test("Doublons : clés composites distinguent plusieurs événements, sans forcer un choix", () => {
+  const plan = buildImportPlan(
+    input(
+      [
+        ["A", "10/12/2025"],
+        ["A", "11/12/2025"],
+      ],
+      { keys: ["Identifier", "Date"] },
+    ),
+  );
+  assert.equal(plan.errors.length, 0);
+  assert.equal(plan.duplicateGroups.length, 0);
+  assert.equal(plan.stats.added, 2);
+});
+
+test("Doublons : clés de secours reliées indirectement forment un seul groupe", () => {
+  const args = input(
+    [
+      ["A", null, null, "X"],
+      ["A", null, null, "Y"],
+      ["B", null, null, "Y"],
+    ],
+    { keys: ["Identifier", "Note"], keyMode: "fallback" },
+  );
+  const group = buildImportPlan(args).duplicateGroups[0];
+  assert.equal(group.rows.length, 3);
+  const plan = buildImportPlan({
+    ...args,
+    duplicateResolutions: { [group.id]: "row:" + group.rows[1].id },
+  });
+  assert.equal(plan.errors.length, 0);
+  assert.equal(plan.stats.added, 1);
+  assert.equal(plan.stats.excluded, 2);
+});
+
+test("Doublons : deux identifiants de secours ciblant le même enregistrement sont regroupés", () => {
+  const args = input([["A"], ["", null, null, "X"]], {
+    keys: ["Identifier", "Note"],
+    keyMode: "fallback",
+    records: [{ id: 1, Identifier: "A", Note: "X" }],
+  });
+  assert.equal(buildImportPlan(args).duplicateGroups[0].rows.length, 2);
+});
+
+test("Doublons : les noms de colonnes particuliers ne deviennent pas des clés de prototype", () => {
+  const args = {
+    tableId: "Test",
+    columns: [{ id: "__proto__", label: "Code", type: "Text" }],
+    keys: ["__proto__"],
+    rules: Object.fromEntries([["__proto__", "match"]]),
+    records: [],
+    sheets: [
+      {
+        name: "Feuille",
+        headers: ["Code"],
+        mapping: { Code: "__proto__" },
+        rows: [["A"], ["B"]],
+      },
+    ],
+  };
+  const plan = buildImportPlan(args);
+  assert.equal(plan.errors.length, 0);
+  assert.equal(plan.stats.added, 2);
+  assert.equal(plan.duplicateGroups.length, 0);
+});

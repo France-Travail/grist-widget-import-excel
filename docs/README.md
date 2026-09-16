@@ -64,6 +64,10 @@ les espaces extérieurs des clés texte sont ignorés, les zéros sont conservé
 désigner la même ligne. Une clé qui contredit un identifiant existant bloque la ligne.
 Une clé absente d’une ligne existante n’est pas renseignée automatiquement.
 
+Les doublons du fichier et entre feuilles peuvent être résolus dans l’aperçu : choix
+explicite d’une ligne, date la plus récente sans égalité, ou exclusion du groupe.
+Les exclusions sont détaillées dans le rapport ; aucun choix n’est automatique.
+
 Les doublons à l’intérieur d’un fichier, entre les feuilles sélectionnées, ou parmi
 les lignes Grist correspondantes sont signalés. Le widget examine toute la table
 accessible, indépendamment des filtres visuels du widget. Les permissions Grist restent
