@@ -15,7 +15,6 @@ import {
   renderPlan,
   downloadReport,
 } from "./services/uiService.js";
-import { formatValue } from "./services/dateService.js";
 
 export async function start({ version, revision }) {
   const app = document.getElementById("app");
@@ -246,10 +245,7 @@ export async function start({ version, revision }) {
         el("h3", {
           text: `${s.name} · ${s.rows.length} lignes · aperçu limité à 20`,
         }),
-        dataTable(
-          s.headers,
-          s.rows.slice(0, 20).map((row) => row.map((v) => formatValue(v))),
-        ),
+        dataTable(s.headers, s.previewRows),
       ]),
     );
   }

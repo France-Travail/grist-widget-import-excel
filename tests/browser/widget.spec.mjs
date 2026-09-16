@@ -482,3 +482,38 @@ test("Une clé manquante se relie avant validation et reste associée au fichier
   await validate(page);
   await expect(page.locator("#apply")).toBeEnabled();
 });
+
+test("Les dates Excel sont lisibles dans l’aperçu et restent correctement converties à l’import", async ({
+  page,
+}) => {
+  const bytes = await page.evaluate(() => {
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Identifiant", "Date", "Actif"],
+      ["000042", 46211, 1],
+    ]);
+    ws.B2.z = "m/d/yy";
+    XLSX.utils.book_append_sheet(wb, ws, "Fictif");
+    return Array.from(
+      new Uint8Array(XLSX.write(wb, { bookType: "xlsx", type: "array" })),
+    );
+  });
+  await page
+    .locator("#file-input")
+    .setInputFiles({
+      name: "synthetic-date.xlsx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: Buffer.from(bytes),
+    });
+  await page.locator("#source-preview summary").click();
+  await expect(page.locator("#preview-container")).toContainText("08/07/2026");
+  await expect(page.locator("#preview-container")).not.toContainText("46211");
+  await validate(page);
+  await expect(page.locator("#plan")).toContainText("08/07/2026");
+  await page.locator("#apply").click();
+  await expect(page.locator("#status")).toContainText("Import terminé");
+  expect(await page.evaluate(() => testData.Test.Date)).toEqual([
+    Date.UTC(2026, 6, 8) / 1000,
+  ]);
+});
