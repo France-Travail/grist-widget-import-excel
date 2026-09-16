@@ -1,3 +1,4 @@
+import { formatValue, parseDate } from "./dateService.js";
 import { normalizeName, isEmpty } from "./utils.js";
 
 export async function readWorkbook(file, xlsx = globalThis.XLSX) {
@@ -65,6 +66,7 @@ export function readSheet(
       "En-têtes identiques après normalisation : renommer les colonnes en double.",
     );
   const rows = [],
+    previewRows = [],
     rowNumbers = [],
     warnings = [];
   if (indexes.length !== allHeaders.length)
@@ -93,7 +95,38 @@ export function readSheet(
     if (!row.every(isEmpty)) {
       rows.push(row);
       rowNumbers.push(r + 1);
+      if (previewRows.length < 20) {
+        previewRows.push(
+          indexes.map((index, position) => {
+            const cell =
+              worksheet[xlsx.utils.encode_cell({ r, c: range.s.c + index })];
+            const value = row[position];
+            if (cell?.t === "n" && xlsx.SSF.is_date(cell.z ?? "")) {
+              try {
+                // Only the preview is formatted. The import keeps the original Excel value.
+                const seconds = parseDate(value, { date1904, dateTime: true });
+                return formatValue(
+                  seconds,
+                  Number.isInteger(value) ? "Date" : "DateTime:UTC",
+                );
+              } catch {
+                // Keep malformed values visible; validation reports the actual error.
+              }
+            }
+            return formatValue(value);
+          }),
+        );
+      }
     }
   }
-  return { name, headers, rows, rowNumbers, date1904, warnings, mapping: {} };
+  return {
+    name,
+    headers,
+    rows,
+    previewRows,
+    rowNumbers,
+    date1904,
+    warnings,
+    mapping: {},
+  };
 }

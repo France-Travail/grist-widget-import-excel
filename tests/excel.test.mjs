@@ -96,3 +96,46 @@ test("Fichiers incorrects et trop volumineux rejetés avant parsing", async () =
     /30 Mo/,
   );
 });
+
+test("Aperçu : dates Excel lisibles sans modifier les valeurs importées ni les nombres ordinaires", async () => {
+  const wb = workbook([
+    ["Identifiant", "Date", "Nombre"],
+    [42, 46211, 46211],
+    [],
+    [43, 46211.5, 12],
+  ]);
+  wb.Sheets.Test.A2.z = "00000000";
+  wb.Sheets.Test.B2.z = "m/d/yy";
+  wb.Sheets.Test.B4.z = "dd/mm/yyyy hh:mm";
+  const bytes = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const parsed = await readWorkbook(
+    {
+      name: "synthetic.xlsx",
+      size: bytes.byteLength,
+      arrayBuffer: async () => bytes,
+    },
+    XLSX,
+  );
+  const sheet = readSheet(parsed, "Test", 1, XLSX);
+  assert.deepEqual(sheet.previewRows[0], ["00000042", "08/07/2026", "46211"]);
+  assert.match(sheet.previewRows[1][1], /08\/07\/2026.*12:00:00/);
+  assert.equal(sheet.rows[0][1], 46211);
+  assert.equal(sheet.rows[1][1], 46211.5);
+  assert.deepEqual(sheet.rowNumbers, [2, 4]);
+});
+
+test("Aperçu : calendrier 1904, limites à 20 lignes et dates invalides conservées pour validation", () => {
+  const wb = workbook([["Date"], ...Array.from({ length: 25 }, (_, i) => [i])]);
+  wb.Workbook = { WBProps: { date1904: true } };
+  for (let r = 2; r <= 26; r++) wb.Sheets.Test[`A${r}`].z = "dd/mm/yyyy";
+  const sheet = readSheet(wb, "Test", 1, XLSX);
+  assert.equal(sheet.previewRows[0][0], "01/01/1904");
+  assert.equal(sheet.previewRows.length, 20);
+  assert.equal(sheet.rows.length, 25);
+  const bad = workbook([["Date"], [60], [-1]]);
+  bad.Sheets.Test.A2.z = bad.Sheets.Test.A3.z = "dd/mm/yyyy";
+  assert.deepEqual(readSheet(bad, "Test", 1, XLSX).previewRows, [
+    ["60"],
+    ["-1"],
+  ]);
+});

@@ -22,10 +22,11 @@ pas sur une incapacité générale de Grist à interpréter les chaînes ISO.
 
 ## Contrôles effectués
 
-- **78 tests Node** : conversion des dates, calendriers 1900/1904, fuseaux et changements
+- **80 tests Node** : conversion des dates, calendriers 1900/1904, fuseaux et changements
   d’heure, identifiants, règles, doublons, références, lecture de vrais classeurs générés,
-  transactions et annulations avec API simulée, empreintes des dépendances, build.
-- **12 tests navigateur** : simulation sans écriture, import et réimport, double clic,
+  transactions et annulations avec API simulée, empreintes des dépendances, build,
+  aperçu des dates Excel sans altération des valeurs importées (1900/1904).
+- **13 tests navigateur** : simulation sans écriture, import et réimport, double clic,
   annulation, erreurs avec numéros de ligne, correspondances manuelles, règles
   incompatibles, plusieurs feuilles, en-tête décalé, rendu HTML sûr, largeur mobile,
   enregistrement explicite des règles, aperçu périmé, notification de mise à jour et
